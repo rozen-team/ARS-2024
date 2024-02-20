@@ -26,18 +26,7 @@ void loop()
     
     myOLED.update(); delay(100);
   }
-  
-  // myOLED.setFont(SmallFont);
-  // myOLED.print("|", LEFT, 24);
-  // myOLED.print("|", RIGHT, 24);
-  // myOLED.update();
-  // delay(500);
-  // for (int i=0; i<19; i++)
-  // {
-  //   myOLED.print("\\", 7+(i*6), 24);
-  //   myOLED.update();
-  //   delay(250);
-  // }
+
   myOLED.clrScr();
 }
 
