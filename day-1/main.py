@@ -209,6 +209,59 @@ class AnchorType(Enum):
     TOP = 1
     CENTER = 2
 
+class Digit:
+    value = Property("shape")
+    global_rect = Property("global_rect")
+    local_rect = Property("local_rect")
+
+    def __init__(
+        self,
+        value: int = None,
+        global_rect: List[int] = None,
+        local_rect: List[int] = None,
+    ) -> None:
+        self.value = value
+        self.global_rect = global_rect
+        self.local_rect = local_rect
+
+    def full_rect(self) -> List[int]:
+        rect = (self.global_rect if self.global_rect is not None else [0]*4)
+        return self.local_rect + rect
+
+    def draw_bounding_box(
+        self,
+        draw: np.ndarray,
+        color: Color,
+        thickness: int = 1,
+    ):
+        rect = self.full_rect()
+        cv2.rectangle(
+            draw,
+            (rect[0], rect[1]),
+            (rect[2], rect[3]),
+            color.to_tuple() if type(color) == Color else color,
+            thickness=thickness,
+        )
+
+    def put_text(
+        self,
+        draw: np.ndarray,
+        color: Color,
+        font=cv2.FONT_HERSHEY_SIMPLEX,
+        scale: int = 1,
+        thickness: int = 2,
+        paddings: Tuple[int, int] = [0, 0],
+    ):
+        rect = self.full_rect()
+        cv2.putText(
+            draw,
+            str(self.value),
+            (rect[0] - paddings[0], rect[1] - paddings[1]),
+            font,
+            scale,
+            color.to_tuple() if type(color) == Color else color,
+            thickness=thickness,
+        )
 
 class Figure:
     shape = Property("shape")
@@ -568,6 +621,29 @@ class FiguresSearchParams:
         self.allowed_shapes = allowed_shapes
         self.convexity_defects_min_distance = convexity_defects_min_distance
 
+class DigitsSearchParams:
+    def __init__(
+        self,
+        color_range: ColorRange = ...,
+        kernel_size: int = 3,
+        one_ratio: int = 3.7,
+        segwhite_ratio: float = 0.5,
+        height_error: int = 30,
+        crop_border_size: int = 1,
+        digit_size: int = 32,
+        roi_rect: List[int] = None,
+        min_contour_area: float = 150,
+    ) -> None:
+        self.color_range = color_range
+        self.kernel_size = kernel_size
+        self.one_ratio = one_ratio
+        self.segwhite_ratio = segwhite_ratio
+        self.height_error = height_error
+        self.crop_border_size = crop_border_size
+        self.roi_rect = roi_rect
+        self.digit_size = digit_size
+        self.min_contour_area = min_contour_area
+
 
 class FiguresSearchResult:
     def __init__(
@@ -580,6 +656,16 @@ class FiguresSearchResult:
 
     def has_any_figure(self) -> bool:
         return len(self.figures) > 0
+
+class DigitsSearchResult:
+    def __init__(
+        self, 
+        digits: List[Digit] = None,
+    ) -> None:
+        self.digits = digits
+
+    def has_any_digit(self) -> bool:
+        return len(self.digits) > 0
 
 
 class FiguresListPointer:
@@ -904,6 +990,125 @@ def find_figures(rgb: np.ndarray, params: FiguresSearchParams) -> FiguresSearchR
                 fig.define_shape(cnt)
                 figures.append(fig)
     return FiguresSearchResult(figures, bimages)
+
+def classify_digit(bin: np.ndarray, rect: List[int], params: DigitsSearchParams) -> Digit:
+    DIGITS_LOOKUP = {
+        (1, 1, 1, 0, 1, 1, 1): 0,
+        (0, 0, 1, 0, 0, 1, 0): 1,
+        (1, 0, 1, 1, 1, 1, 0): 2,
+        (1, 0, 1, 1, 0, 1, 1): 3,
+        (0, 1, 1, 1, 0, 1, 0): 4,
+        (1, 1, 0, 1, 0, 1, 1): 5,
+        (1, 1, 0, 1, 1, 1, 1): 6,
+        (1, 0, 1, 0, 0, 1, 0): 7,
+        (1, 1, 1, 1, 1, 1, 1): 8,
+        (1, 1, 1, 1, 0, 1, 1): 9
+    }
+
+    if rect[2] - rect[0] <= 2 * params.crop_border_size or \
+                rect[3] - rect[1] <= 2 * params.crop_border_size:
+            return None
+
+    crop = params.crop_border_size
+    roi = bin[rect[1]+crop:rect[3]-crop, rect[0]+crop:rect[2]-crop].copy()
+    (h, w) = roi.shape
+
+    # detect the digit --> 1
+    # move out this value to params
+    if (h / w) > params.one_ratio:
+        return 1
+
+    roi = cv2.resize(roi, (params.digit_size, params.digit_size))
+    (h, w) = roi.shape
+
+    (dW, dH) = (int(w * 0.25), int(h * 0.15))
+    dHC = int(h * 0.05)
+    segments = [
+        ((0, 0), (w, dH)),  # top
+        ((0, 0), (dW, h // 2)), # top-left
+        ((w - dW, 0), (w, h // 2)), # top-right
+        ((0, (h // 2) - dHC) , (w, (h // 2) + dHC)), # center
+        ((0, h // 2), (dW, h)), # bottom-left
+        ((w - dW, h // 2), (w, h)), # bottom-right
+        ((0, h - dH), (w, h))   # bottom
+    ]
+    on = [0] * len(segments)
+
+    for (i, ((xA, yA), (xB, yB))) in enumerate(segments):
+        segROI = roi[yA:yB, xA:xB]
+        total = cv2.countNonZero(segROI)
+        area = (xB - xA) * (yB - yA)
+        if total / (float(area) + pow(10, -10)) > params.segwhite_ratio:
+            on[i]= 1
+
+    if tuple(on) not in DIGITS_LOOKUP:
+        return None
+    return Digit(
+            value = DIGITS_LOOKUP[tuple(on)],
+            global_rect = params.roi_rect,
+            local_rect = rect
+        )
+
+def find_digits(rgb: np.ndarray, params: DigitsSearchParams) -> DigitsSearchResult:
+    hsv = cv2.cvtColor(rgb, cv2.COLOR_BGR2HSV)
+
+    roi = hsv.copy()
+    if params.roi_rect is not None:
+        # crop roi
+        roi_rect = params.roi_rect
+        roi = hsv[roi_rect.y1:roi_rect.y2, roi_rect.x1:roi_rect.x2]
+
+    rng = params.color_range
+    min_color = rng.min_color.to_tuple()
+    max_color = rng.max_color.to_tuple()
+    bin = cv2.inRange(roi, min_color, max_color)
+
+    # a bit of filters...
+    ksize = params.kernel_size
+    kernel = np.ones((ksize, ksize), np.uint8) 
+    bin = cv2.erode(bin, kernel)
+
+    # hardcode the parameters of findContoures. We always search external cnt
+    contours, _ = cv2.findContours(
+        bin, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    )
+
+    digits = []
+    for cnt in contours:
+        area = cv2.contourArea(cnt)
+        if area <= params.min_contour_area:
+            continue
+
+        # if in one cnt consist of several digits: split them manually
+        x, y, w, h = cv2.boundingRect(cnt)
+        digits_count = round((w / h) * 2)
+        step = w / digits_count
+        for i in range(digits_count):
+            digit_rect = [
+                x + i * step, 
+                y, 
+                x + min((i + 1) * step, w), 
+                y + h
+            ]
+            digit_rect = list(map(int, digit_rect))
+            digit_value = classify_digit(bin, digit_rect, params)
+
+            if digit_value is not None:
+                digits.append(digit_value)
+
+        if digits_count == 0:
+            # check full roi (when one digit in it)
+            digit_rect = [
+                x, 
+                y, 
+                x + w, 
+                y + h
+            ]
+            digit_value = classify_digit(bin, digit_rect, params)
+            if digit_value is not None:
+                digits.append(digit_value)
+
+    return DigitsSearchResult(digits)
 
 
 class PD:
@@ -1301,20 +1506,31 @@ if __name__ == "__main__":
         convexity_defects_min_distance=2000,
     )
 
+    digitsSearchParams = DigitsSearchParams(
+        color_range=ColorRange(Color(0, 0, 200), Color(180, 100, 255), "white"),
+        min_contour_area=80,
+    )
+
     # sequence = [
     #     "day-1/data/t1.png",
     #     "day-1/data/t2.png",
     #     "day-1/data/t3.png",
     #     "day-1/data/t4.png",
     # ]
-    sequence = [
-        "day-1/data/tr1.jpg",
-        "day-1/data/tr2.jpg",
-        "day-1/data/tr3.jpg",
-        "day-1/data/tr4.jpg",
-        "day-1/data/tr5.jpg",
-    ]
+    #sequence = [
+    #    "day-1/data/tr1.jpg",
+    #    "day-1/data/tr2.jpg",
+    #    "day-1/data/tr3.jpg",
+    #    "day-1/data/tr4.jpg",
+    #    "day-1/data/tr5.jpg",
+    #]
     # cap = cv2.VideoCapture(0)
+
+    # test digits
+    sequence = [
+        "data/digits.png",
+        "data/digits_1.png"
+    ]
 
     auv = SmartAUV(
         # get_front_frame_func=lambda self: cap.read()[1],
@@ -1326,6 +1542,18 @@ if __name__ == "__main__":
     while True:
         with auv as (image, _):
             draw = image.copy()
+
+            digitsSearch = find_digits(image, digitsSearchParams)
+            # find first digit of depth
+            start_digit = min(digitsSearch.digits, key=lambda x: x.full_rect()[1])
+            # find another digit, where height is similarly to height of start digit
+            depth_digits = filter(lambda x: abs(x.full_rect()[1] - start_digit.full_rect()[1]) <= digitsSearchParams.height_error, digitsSearch.digits)
+            depth_digits = sorted(depth_digits, key=lambda x: x.full_rect()[0])
+            # for test
+            for digit in depth_digits:
+                digit.draw_bounding_box(draw, redColor, 2)
+                digit.put_text(draw, redColor, scale=0.5, paddings=[0, 5])
+
             results = find_figures(image, searchParams)
             figures = results.figures
             binaries = results.binaries
@@ -1407,5 +1635,6 @@ if __name__ == "__main__":
                 "trash:",
                 len(trash),
             )
+
             auv.show(draw)
             cv2.waitKey(0)
