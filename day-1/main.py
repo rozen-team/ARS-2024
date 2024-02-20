@@ -4,9 +4,25 @@ import time as t
 from enum import Enum
 from typing import Any, List, Set, Tuple, Union
 
+USING_IMUTILS = True
+try:
+    import imutils
+except:
+    USING_PYMURAPI = False
+
+    print("Imutils disabled.")
+
 import cv2
 import numpy as np
-import pymurapi as mur
+
+USING_PYMURAPI = True
+try:
+    import pymurapi as mur
+
+    print("Using PyMURAPI")
+except:
+    USING_PYMURAPI = False
+    print("PyMURAPI disabled.")
 
 
 class Convert:
@@ -14,41 +30,68 @@ class Convert:
     def list_elements_to(list: List, type: Any) -> List[Any]:
         return [type(i) for i in list]
 
+
 class Maath:
     @staticmethod
     def vectors2_distance(a: Tuple[float, float], b: Tuple[float, float]) -> float:
-        return abs(math.sqrt(
-            (b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2
-        ))
+        return abs(math.sqrt((b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2))
+
     @staticmethod
-    def vectors2_triangle_center(a: Tuple[float, float], b: Tuple[float, float], c: Tuple[float, float]) -> Tuple[float, float]:
+    def vectors2_triangle_center(
+        a: Tuple[float, float], b: Tuple[float, float], c: Tuple[float, float]
+    ) -> Tuple[float, float]:
         return (
             (a[0] + b[0] + c[0]) / 3,
             (a[1] + b[1] + c[1]) / 3,
         )
+
     @staticmethod
-    def vectors2_square_center(a: Tuple[float, float], b: Tuple[float, float], c: Tuple[float, float], d: Tuple[float, float]) -> Tuple[float, float]:
+    def vectors2_square_center(
+        a: Tuple[float, float],
+        b: Tuple[float, float],
+        c: Tuple[float, float],
+        d: Tuple[float, float],
+    ) -> Tuple[float, float]:
         return (
             int((a[0] + b[0] + c[0] + d[0]) / 4),
             int((a[1] + b[1] + c[1] + d[1]) / 4),
         )
+
     @staticmethod
-    def vectors2_two_center(a: Tuple[float, float], b: Tuple[float, float]) -> Tuple[float, float]:
+    def vectors2_two_center(
+        a: Tuple[float, float], b: Tuple[float, float]
+    ) -> Tuple[float, float]:
         return (
             int((a[0] + b[0]) / 2),
             int((a[1] + b[1]) / 2),
         )
+
     @staticmethod
     def vectors2_angle_sin(a, b):
         # вычесляем угол
         x2 = 0 - 0
         y2 = 0 - 240
         try:
-            angle = int(math.asin((a * y2 - b * x2) /
-                                (((a ** 2 + b ** 2) ** 0.5) * ((x2 ** 2 + y2 ** 2) ** 0.5))) * 180 / math.pi)
+            angle = int(
+                math.asin(
+                    (a * y2 - b * x2)
+                    / (((a**2 + b**2) ** 0.5) * ((x2**2 + y2**2) ** 0.5))
+                )
+                * 180
+                / math.pi
+            )
         except ZeroDivisionError:
-            angle = int(math.asin((a * y2 - b * x2) /
-                                (((a ** 2 + b ** 2) ** 0.5 + 0.000001) * ((x2 ** 2 + y2 ** 2) ** 0.5))) * 180 / math.pi)
+            angle = int(
+                math.asin(
+                    (a * y2 - b * x2)
+                    / (
+                        ((a**2 + b**2) ** 0.5 + 0.000001)
+                        * ((x2**2 + y2**2) ** 0.5)
+                    )
+                )
+                * 180
+                / math.pi
+            )
         return angle
 
     @staticmethod
@@ -56,9 +99,16 @@ class Maath:
         x2 = 0 - 0
         y2 = 0 - 240
         # вычесляем угол
-        angle = int(math.acos((a * x2 + b * y2) /
-                            (((a ** 2 + b ** 2) ** 0.5) * ((x2 ** 2 + y2 ** 2) ** 0.5))) * 180 / math.pi)
+        angle = int(
+            math.acos(
+                (a * x2 + b * y2)
+                / (((a**2 + b**2) ** 0.5) * ((x2**2 + y2**2) ** 0.5))
+            )
+            * 180
+            / math.pi
+        )
         return angle
+
     @staticmethod
     def vectors2_angle(a, b):
         angle_ = Maath.vectors2_angle_cos(a, b)
@@ -69,12 +119,39 @@ class Maath:
             pass
         return angle
 
+    @staticmethod
+    def vector_abs(a):
+        return math.sqrt(a[0] ** 2 + a[1] ** 2)
+
+    @staticmethod
+    def dot_product(a, b):
+        return a[0] * b[0] + a[1] * b[1]
+
+    @staticmethod
+    def cos_between_vectors(a, b):
+        return Maath.dot_product(a, b) / (Maath.vector_abs(a) * Maath.vector_abs(b))
+
+
 class ShapeType(Enum):
     CIRCLE = 0
     RECTANGLE = 1
     TRIANGLE = 2
     UNKNOWN = 3
     SQUARE = 4
+    FISH = 5
+    TREE = 6
+
+
+ALL_SHAPES = [
+    ShapeType.CIRCLE,
+    ShapeType.RECTANGLE,
+    ShapeType.TRIANGLE,
+    ShapeType.UNKNOWN,
+    ShapeType.SQUARE,
+    ShapeType.TREE,
+    ShapeType.FISH,
+]
+
 
 class Color:
     def __init__(self, x: float, y: float, z: float, name: str = ...) -> None:
@@ -82,8 +159,10 @@ class Color:
         self.x = x
         self.y = y
         self.z = z
+
     def to_tuple(self) -> Tuple:
         return (self.x, self.y, self.z)
+
 
 class CompareType(Enum):
     EQUALS = 0
@@ -93,65 +172,92 @@ class CompareType(Enum):
     LOWER_EQUALS = 4
     NOT_EQUALS = 5
 
+
 class PropertyCompare:
     def __init__(self, name: str, value: Any, compare_type: CompareType) -> None:
         self.name = name
         self.value = value
         self.compare_type = compare_type
 
+
 class Property:
     def __init__(self, name: str, type: Any = ...) -> None:
         self.name = name
-    def __eq__(self, o: Any) -> PropertyCompare: # ==
+
+    def __eq__(self, o: Any) -> PropertyCompare:  # ==
         return PropertyCompare(self.name, o, CompareType.EQUALS)
-    def __gt__(self, o: Any) -> PropertyCompare: # >
+
+    def __gt__(self, o: Any) -> PropertyCompare:  # >
         return PropertyCompare(self.name, o, CompareType.GREATER)
-    def __ge__(self, o: Any) -> PropertyCompare: # >=
+
+    def __ge__(self, o: Any) -> PropertyCompare:  # >=
         return PropertyCompare(self.name, o, CompareType.GREATER_EQUALS)
-    def __lt__(self, o: Any) -> PropertyCompare: # <
+
+    def __lt__(self, o: Any) -> PropertyCompare:  # <
         return PropertyCompare(self.name, o, CompareType.LOWER)
-    def __le__(self, o: Any) -> PropertyCompare: # <=
+
+    def __le__(self, o: Any) -> PropertyCompare:  # <=
         return PropertyCompare(self.name, o, CompareType.LOWER_EQUALS)
-    def __ne__(self, o: Any) -> PropertyCompare: # !=
+
+    def __ne__(self, o: Any) -> PropertyCompare:  # !=
         return PropertyCompare(self.name, o, CompareType.NOT_EQUALS)
+
     # def __or__(self, o: 'Property') -> PropertyCompare:
 
 
-class Figure:
-    shape = Property('shape')
-    color_range = Property('color_range')
-    color_name = Property('color_name')
-    center = Property('center')
-    center_x = Property('center_x')
-    center_y = Property('center_y')
-    rect_area = Property('rect_area')
-    circle_area = Property('circle_area')
-    triangle_area = Property('triangle_area')
-    moments = Property('moments')
-    rect_box = Property('rect_box')
-    triangle_box = Property('triangle_box')
-    circle_radius = Property('circle_radius')
-    cnt = Property('cnt')
-    cnt_area = Property('cnt_area')
-    arrow_angle = Property('arrow_angle')
+class AnchorType(Enum):
+    TOP = 1
+    CENTER = 2
 
-    def __init__(self, shape: ShapeType = ShapeType.UNKNOWN, 
-                 color_range: 'ColorRange' = None, 
-                 color_name: str = None,
-                 center: Tuple[int, int] = None,
-                 cnt: np.ndarray = None, 
-                 cnt_area: float = None) -> None:
+
+class Figure:
+    shape = Property("shape")
+    color_range = Property("color_range")
+    color_name = Property("color_name")
+    center = Property("center")
+    center_x = Property("center_x")
+    center_y = Property("center_y")
+    rect_area = Property("rect_area")
+    circle_area = Property("circle_area")
+    triangle_area = Property("triangle_area")
+    moments = Property("moments")
+    rect_box = Property("rect_box")
+    triangle_box = Property("triangle_box")
+    circle_radius = Property("circle_radius")
+    cnt = Property("cnt")
+    cnt_area = Property("cnt_area")
+    arrow_angle = Property("arrow_angle")
+    vertex = Property("vertex")
+    is_convex = Property("is_convex")
+    hull = Property("hull")
+    hull_defects = Property("hull_defects")
+
+    _allowed_shapes = []
+
+    def __init__(
+        self,
+        shape: ShapeType = ShapeType.UNKNOWN,
+        color_range: "ColorRange" = None,
+        color_name: str = None,
+        center: Tuple[int, int] = None,
+        cnt: np.ndarray = None,
+        cnt_area: float = None,
+        allowed_shapes: List[ShapeType] = ALL_SHAPES,
+        convexity_defects_min_distance: int = 5000,
+    ) -> None:
+        self._allowed_shapes = allowed_shapes
+        self._convexity_defects_min_distance = convexity_defects_min_distance
         self.shape = shape
         self.color_range = color_range
         self.color_name = color_name
         self.center = center
-        
+
         self.center_x = None
         self.center_y = None
         if self.center is not None:
             self.center_x = center[0]
             self.center_y = center[1]
-        
+
         self.rect_area = None
         self.circle_area = None
         self.triangle_area = None
@@ -170,19 +276,22 @@ class Figure:
         if cnt is not ...:
             self.cnt = cnt
         self.moments = cv2.moments(self.cnt)
-       
+
     def define_center(self, cnt: np.ndarray = ...) -> bool:
         if cnt is not ...:
             self.cnt = cnt
             self.define_moments()
         try:
-            x = int(self.moments["m10"] / self.moments["m00"])  
+            x = int(self.moments["m10"] / self.moments["m00"])
             y = int(self.moments["m01"] / self.moments["m00"])
             self.center = (x, y)
             return True
         except ZeroDivisionError:
             return False
-        
+
+    def allowed(self, shape: ShapeType):
+        return shape in self._allowed_shapes
+
     def define_shape(self, cnt: np.ndarray = ...):
         if cnt is not ...:
             self.cnt = cnt
@@ -192,22 +301,62 @@ class Figure:
         rect = cv2.minAreaRect(self.cnt)
         ((_, _), (w, h), _) = rect
 
-        rectangle_area = w * h
-        circle_area = cR ** 2 * math.pi
+        self.vertex = cv2.approxPolyDP(cnt, 0.02 * cv2.arcLength(cnt, True), True)
 
-        if rectangle_area > circle_area < s_triangle:
-            self.shape = ShapeType.CIRCLE
-            self.circle_radius = cR
-        elif circle_area > rectangle_area < s_triangle:
-            if 0.8 < w / h < 1.2:
-                self.shape = ShapeType.SQUARE
-            else:
-                self.shape = ShapeType.RECTANGLE
-            self.rect_box = rect
-        elif rectangle_area > s_triangle < circle_area:
-            self.shape = ShapeType.TRIANGLE
-            self.triangle_area = s_triangle
-            self.triangle_box = triangle
+        self.hull = cv2.convexHull(cnt, returnPoints=False)
+
+        self.hull_defects = cv2.convexityDefects(cnt, self.hull)
+        self.hull_defects = (
+            np.array(
+                [
+                    self.hull_defects[i, 0]
+                    for i in range(self.hull_defects.shape[0])
+                    if self.hull_defects[i, 0][3] > self._convexity_defects_min_distance
+                ]
+            )
+            if self.hull_defects is not None
+            else np.array([])
+        )
+        self.is_convex = len(self.hull_defects) == 0
+        # self.hull_defects = np.where(self.hull_defects[:, 0][3])
+
+        rectangle_area = w * h
+        circle_area = cR**2 * math.pi
+
+        if self.is_convex:
+            if (
+                self.allowed(ShapeType.CIRCLE)
+                and rectangle_area > circle_area < s_triangle
+            ):
+                self.shape = ShapeType.CIRCLE
+                self.circle_radius = cR
+            elif circle_area > rectangle_area < s_triangle:
+                if self.allowed(ShapeType.SQUARE) and 0.8 < w / h < 1.2:
+                    self.shape = ShapeType.SQUARE
+                elif self.allowed(ShapeType.RECTANGLE):
+                    self.shape = ShapeType.RECTANGLE
+                self.rect_box = rect
+            elif (
+                self.allowed(ShapeType.TRIANGLE)
+                and rectangle_area > s_triangle < circle_area
+            ):
+                self.shape = ShapeType.TRIANGLE
+                self.triangle_area = s_triangle
+                self.triangle_box = triangle
+        elif len(self.hull_defects) == 2:
+            s, e, f, d = self.hull_defects[0]
+            start = tuple(cnt[s][0])
+            end = tuple(cnt[e][0])
+            far = tuple(cnt[f][0])
+
+            vec_fs = (far[0] - start[0], far[1] - start[1])
+            vec_fe = (far[0] - end[0], far[1] - end[1])
+
+            angle = math.degrees(math.acos(Maath.cos_between_vectors(vec_fs, vec_fe)))
+            if self.allowed(ShapeType.TREE) and angle < 80:
+                self.shape = ShapeType.TREE
+            elif self.allowed(ShapeType.FISH):
+                self.shape = ShapeType.FISH
 
         self.rect_area = rectangle_area
         self.triangle_area = s_triangle
@@ -215,51 +364,110 @@ class Figure:
 
         self.center_x = self.center[0]
         self.center_y = self.center[1]
-        
+
         return True
 
-    def draw_contour(self, rgb: np.ndarray, color: Tuple[int, int, int] = (0, 0, 0), thickness=1) -> np.ndarray:
+    def draw_contour(
+        self, rgb: np.ndarray, color: Tuple[int, int, int] = (0, 0, 0), thickness=1
+    ) -> np.ndarray:
         cv2.drawContours(rgb, [self.cnt], 0, color, thickness=thickness)
-    def draw_rect(self, rgb: np.ndarray, color: Tuple[int, int, int] = (0, 0, 0), thickness=1) -> np.ndarray:
+
+    def draw_rect(
+        self, rgb: np.ndarray, color: Tuple[int, int, int] = (0, 0, 0), thickness=1
+    ) -> np.ndarray:
         box = cv2.boxPoints(self.rect_box)
         box = np.int0(box)
         cv2.drawContours(rgb, [box], 0, color, thickness)
-    def draw_circle(self, rgb: np.ndarray, color: Tuple[int, int, int] = (0, 0, 0), thickness=1) -> np.ndarray:
-        cv2.circle(rgb, (int(self.center[0]), int(self.center[1])), int(self.circle_radius), color, thickness)
-    def draw_triangle(self, rgb: np.ndarray, color: Tuple[int, int, int] = (0, 0, 0), thickness=1) -> np.ndarray:
-        cv2.line(rgb, tuple(self.triangle_box[0][0]), tuple(self.triangle_box[1][0]), color, thickness)
-        cv2.line(rgb, tuple(self.triangle_box[1][0]), tuple(self.triangle_box[2][0]), color, thickness)
-        cv2.line(rgb, tuple(self.triangle_box[0][0]), tuple(self.triangle_box[2][0]), color, thickness)
+
+    def draw_circle(
+        self, rgb: np.ndarray, color: Tuple[int, int, int] = (0, 0, 0), thickness=1
+    ) -> np.ndarray:
+        cv2.circle(
+            rgb,
+            (int(self.center[0]), int(self.center[1])),
+            int(self.circle_radius),
+            color,
+            thickness,
+        )
+
+    def draw_triangle(
+        self, rgb: np.ndarray, color: Tuple[int, int, int] = (0, 0, 0), thickness=1
+    ) -> np.ndarray:
+        cv2.line(
+            rgb,
+            tuple(self.triangle_box[0][0]),
+            tuple(self.triangle_box[1][0]),
+            color,
+            thickness,
+        )
+        cv2.line(
+            rgb,
+            tuple(self.triangle_box[1][0]),
+            tuple(self.triangle_box[2][0]),
+            color,
+            thickness,
+        )
+        cv2.line(
+            rgb,
+            tuple(self.triangle_box[0][0]),
+            tuple(self.triangle_box[2][0]),
+            color,
+            thickness,
+        )
+
     def draw_figure(self, rgb: np.ndarray, color: Color, thickness=1) -> np.ndarray:
         if self.shape == ShapeType.CIRCLE:
-            self.draw_circle(rgb, color.to_tuple(), thickness)
+            self.draw_circle(
+                rgb, color.to_tuple() if type(color) == Color else color, thickness
+            )
         elif self.shape == ShapeType.RECTANGLE or self.shape == ShapeType.SQUARE:
-            self.draw_rect(rgb, color.to_tuple(), thickness)
+            self.draw_rect(
+                rgb, color.to_tuple() if type(color) == Color else color, thickness
+            )
         elif self.shape == ShapeType.TRIANGLE:
-            self.draw_triangle(rgb, color.to_tuple(), thickness)
+            self.draw_triangle(
+                rgb, color.to_tuple() if type(color) == Color else color, thickness
+            )
+        else:
+            self.draw_contour(
+                rgb, color.to_tuple() if type(color) == Color else color, thickness
+            )
+
     def define_arrow_angle(self):
         angle_arrow = self.triangle_box
-        W1 = (((angle_arrow[1, 0, 0] - angle_arrow[2, 0, 0]) ** 2)
-                  + ((angle_arrow[1, 0, 1] - angle_arrow[2, 0, 1]) ** 2)) ** 0.5
+        W1 = (
+            ((angle_arrow[1, 0, 0] - angle_arrow[2, 0, 0]) ** 2)
+            + ((angle_arrow[1, 0, 1] - angle_arrow[2, 0, 1]) ** 2)
+        ) ** 0.5
 
-        W2 = (((angle_arrow[0, 0, 0] - angle_arrow[2, 0, 0]) ** 2)
-                + ((angle_arrow[0, 0, 1] - angle_arrow[2, 0, 1]) ** 2)) ** 0.5
+        W2 = (
+            ((angle_arrow[0, 0, 0] - angle_arrow[2, 0, 0]) ** 2)
+            + ((angle_arrow[0, 0, 1] - angle_arrow[2, 0, 1]) ** 2)
+        ) ** 0.5
 
-        W3 = (((angle_arrow[1, 0, 0] - angle_arrow[0, 0, 0]) ** 2)
-                + ((angle_arrow[1, 0, 1] - angle_arrow[0, 0, 1]) ** 2)) ** 0.5
+        W3 = (
+            ((angle_arrow[1, 0, 0] - angle_arrow[0, 0, 0]) ** 2)
+            + ((angle_arrow[1, 0, 1] - angle_arrow[0, 0, 1]) ** 2)
+        ) ** 0.5
 
         if W3 < W1 > W2:
-            coordinate = [[angle_arrow[0, 0, 0], angle_arrow[0, 0, 1]],
-                            [angle_arrow[1, 0, 0], angle_arrow[1, 0, 1]],
-                            [angle_arrow[2, 0, 0], angle_arrow[2, 0, 1]]]
+            coordinate = [
+                [angle_arrow[0, 0, 0], angle_arrow[0, 0, 1]],
+                [angle_arrow[1, 0, 0], angle_arrow[1, 0, 1]],
+                [angle_arrow[2, 0, 0], angle_arrow[2, 0, 1]],
+            ]
         elif W3 < W2 > W1:
-            coordinate = [[angle_arrow[1, 0, 0], angle_arrow[1, 0, 1]],
-                            [angle_arrow[2, 0, 0], angle_arrow[2, 0, 1]],
-                            [angle_arrow[0, 0, 0], angle_arrow[0, 0, 1]]]
+            coordinate = [
+                [angle_arrow[1, 0, 0], angle_arrow[1, 0, 1]],
+                [angle_arrow[2, 0, 0], angle_arrow[2, 0, 1]],
+                [angle_arrow[0, 0, 0], angle_arrow[0, 0, 1]],
+            ]
         elif W1 < W3 > W2:
-            coordinate = [[angle_arrow[2, 0, 0], angle_arrow[2, 0, 1]],
-                            [angle_arrow[0, 0, 0], angle_arrow[0, 0, 1]],
-                            [angle_arrow[1, 0, 0], angle_arrow[1, 0, 1]]]
+            coordinate = [
+                [angle_arrow[2, 0, 0], angle_arrow[2, 0, 1]],
+                [angle_arrow[0, 0, 0], angle_arrow[0, 0, 1]],
+                [angle_arrow[1, 0, 0], angle_arrow[1, 0, 1]],
+            ]
         else:
             return False
         # вычисления кооринат середины наибольшой стороны треугольника
@@ -273,10 +481,61 @@ class Figure:
         self.arrow_angle = angle
         return True
 
+    def put_text(
+        self,
+        rgb: np.ndarray,
+        text: str,
+        color: Color,
+        font=cv2.FONT_HERSHEY_SIMPLEX,
+        scale: int = 1,
+        thickness: int = 2,
+        anchor: AnchorType = AnchorType.CENTER,
+        paddings: Tuple[int, int] = [0, 0],
+    ):
+        if anchor == AnchorType.TOP:
+            x, y, w, h = cv2.boundingRect(self.cnt)
+            point = (x, y)
+        else:
+            self.define_center()
+            point = self.center
+        point = (point[0] + paddings[0], point[1] + paddings[1])
+
+        cv2.putText(
+            rgb,
+            text,
+            point,
+            font,
+            scale,
+            color.to_tuple() if type(color) == Color else color,
+            thickness=thickness,
+        )
+
+    def draw_bounding_box(
+        self,
+        draw: np.ndarray,
+        color: Color,
+        thickness: int = 1,
+        paddings: Tuple[int, int, int, int] = [0, 0, 0, 0],
+    ):
+        x, y, w, h = cv2.boundingRect(self.cnt)
+
+        cv2.rectangle(
+            draw,
+            (x + paddings[0], y + paddings[1]),
+            (x + w - paddings[2], y + h - paddings[3]),
+            color.to_tuple() if type(color) == Color else color,
+            thickness=thickness,
+        )
+
+
 class ColorRange:
-    def __init__(self, min_color: Color = ...,
-                 max_color: Color = ...,
-                 name: str = ...,) -> None:
+    def __init__(
+        self,
+        min_color: Color = ...,
+        max_color: Color = ...,
+        name: str = ...,
+        subranges: List["ColorRange"] = [],
+    ) -> None:
         self.name = name
         self.min_color = min_color
         self.max_color = max_color
@@ -284,43 +543,68 @@ class ColorRange:
         self.min_color.name = name
         self.max_color.name = name
 
+        self.subranges = subranges
+
+    def __add__(self, cr: "ColorRange"):
+        return ColorRange(
+            self.min_color, self.max_color, self.name, self.subranges + [cr]
+        )
+
+
 class FiguresSearchParams:
-    def __init__(self, color_ranges: List[ColorRange] = ...,
-                 contours_find_mode: int = cv2.RETR_EXTERNAL,
-                 contours_find_method: int = cv2.CHAIN_APPROX_SIMPLE,
-                 min_contour_area: float = 0) -> None:
+    def __init__(
+        self,
+        color_ranges: List[ColorRange] = ...,
+        contours_find_mode: int = cv2.RETR_EXTERNAL,
+        contours_find_method: int = cv2.CHAIN_APPROX_SIMPLE,
+        min_contour_area: float = 0,
+        allowed_shapes: List[ShapeType] = ALL_SHAPES,
+        convexity_defects_min_distance=5000,
+    ) -> None:
         self.color_ranges = color_ranges
         self.contours_mode = contours_find_mode
         self.min_contour_area = min_contour_area
         self.contours_find_method = contours_find_method
+        self.allowed_shapes = allowed_shapes
+        self.convexity_defects_min_distance = convexity_defects_min_distance
 
-        
+
 class FiguresSearchResult:
-    def __init__(self, figures: List[Figure] = None) -> None:
+    def __init__(
+        self, figures: List[Figure] = None, binaries: List["BinarizedImage"] = []
+    ) -> None:
         if figures is not None:
             self.raw_figures = figures
         self.figures = FiguresList(self.raw_figures)
+        self.binaries = binaries
 
     def has_any_figure(self) -> bool:
         return len(self.figures) > 0
 
+
 class FiguresListPointer:
-    def __init__(self, index: int, figures_list: 'FiguresList', got: bool = True) -> None:
+    def __init__(
+        self, index: int, figures_list: "FiguresList", got: bool = True
+    ) -> None:
         self.index = index
         self.figures_list = figures_list
         self.got = got
+
     def to_value(self) -> Figure:
         return self.figures_list._figures[self.index]
+
     def to_value_or_default(self, default: Any = None) -> Union[Figure, Any]:
         if not self.got:
             return default
         return self.to_value()
+
     @property
     def is_bad_index(self) -> bool:
         return True if self.index < 0 else False
 
+
 class FunctionResult:
-    def __init__(self, function, args = [], kwargs = {}, calc: bool = False) -> None:
+    def __init__(self, function, args=[], kwargs={}, calc: bool = False) -> None:
         self.function = function
         self.args = args
         self.kwargs = kwargs
@@ -329,15 +613,22 @@ class FunctionResult:
         else:
             self.result = None
             self.calculated = False
+
     def calculate(self):
         self.result = self.function(*self.args, **self.kwargs)
         self.calculated = True
-    def get_args(self) -> List: 
+
+    def get_args(self) -> List:
         return self.args
+
     def __str__(self) -> str:
-        return "<FunctionResult, calculated={}, result={}, function={}, args={}, kwargs={}>".format(self.calculated, self.result, self.function, self.args, self.kwargs)
+        return "<FunctionResult, calculated={}, result={}, function={}, args={}, kwargs={}>".format(
+            self.calculated, self.result, self.function, self.args, self.kwargs
+        )
+
     def __repr__(self) -> str:
         return self.__str__()
+
 
 # class FunctionResultsList:
 #     def __init__(self, function_results: List[FunctionResult]) -> None:
@@ -345,69 +636,136 @@ class FunctionResult:
 #     def max(self, func = ...) -> FunctionResult:
 #         if func is None:
 #             func = lambda x: x.result
-#         return 
+#         return
 
-def unpoint(figures_list: 'FiguresList'):
+
+def unpoint(figures_list: "FiguresList"):
     for p in figures_list:
         yield p.to_value()
 
-def extract(figures_list: 'FiguresList'):
+
+def extract(figures_list: "FiguresList"):
     for p in figures_list:
         yield (p, p.to_value())
 
+
 class FiguresList:
-    def __init__(self, figures_list: List[Figure], sub_lists: List['FiguresList'] = [], function_results: List[FunctionResult] = []) -> None:
+    def __init__(
+        self,
+        figures_list: List[Figure],
+        sub_lists: List["FiguresList"] = [],
+        function_results: List[FunctionResult] = [],
+    ) -> None:
         self._figures = figures_list
         # self._sub_lists = sub_lists
         # self.zipped = None
         # self.function_results = function_results
-    def where(self, *args: PropertyCompare, **kwargs) -> 'FiguresList':
-        return FiguresList([i for i in self._figures if (
-            all([(
-                (getattr(i, j.name) == j.value) if j.compare_type == CompareType.EQUALS else 
-                (getattr(i, j.name) > j.value) if j.compare_type == CompareType.GREATER else 
-                (getattr(i, j.name) >= j.value) if j.compare_type == CompareType.GREATER_EQUALS else 
-                (getattr(i, j.name) < j.value) if j.compare_type == CompareType.LOWER else 
-                (getattr(i, j.name) <= j.value) if j.compare_type == CompareType.LOWER_EQUALS else 
-                (getattr(i, j.name) != j.value) if j.compare_type == CompareType.NOT_EQUALS else False
-            ) for j in args])
-        )])
+
+    def __add__(self, fl: "FiguresList"):
+        return FiguresList(self.to_list() + fl.to_list())
+
+    def where(self, *args: PropertyCompare, **kwargs) -> "FiguresList":
+        return FiguresList(
+            [
+                i
+                for i in self._figures
+                if (
+                    all(
+                        [
+                            (
+                                (getattr(i, j.name) == j.value)
+                                if j.compare_type == CompareType.EQUALS
+                                else (getattr(i, j.name) > j.value)
+                                if j.compare_type == CompareType.GREATER
+                                else (getattr(i, j.name) >= j.value)
+                                if j.compare_type == CompareType.GREATER_EQUALS
+                                else (getattr(i, j.name) < j.value)
+                                if j.compare_type == CompareType.LOWER
+                                else (getattr(i, j.name) <= j.value)
+                                if j.compare_type == CompareType.LOWER_EQUALS
+                                else (getattr(i, j.name) != j.value)
+                                if j.compare_type == CompareType.NOT_EQUALS
+                                else False
+                            )
+                            for j in args
+                        ]
+                    )
+                )
+            ]
+        )
+
     def max(self, key: Property) -> FiguresListPointer:
-        if len(self._figures) <= 0: return FiguresListPointer(-1, self, False)
-        return FiguresListPointer(self._figures.index(max(self._figures, key=lambda x: getattr(x, key.name))), self)
+        if len(self._figures) <= 0:
+            return FiguresListPointer(-1, self, False)
+        return FiguresListPointer(
+            self._figures.index(max(self._figures, key=lambda x: getattr(x, key.name))),
+            self,
+        )
+
     def min(self, key: Property) -> FiguresListPointer:
-        if len(self._figures) <= 0: return FiguresListPointer(-1, self, False)
-        return FiguresListPointer(self._figures.index(min(self._figures, key=lambda x: getattr(x, key.name))), self)
-    def sort(self, key: Property, reverse = False) -> 'FiguresList':
-        return FiguresList(list(sorted(self._figures, key=lambda x: getattr(x, key.name), reverse=reverse)))
+        if len(self._figures) <= 0:
+            return FiguresListPointer(-1, self, False)
+        return FiguresListPointer(
+            self._figures.index(min(self._figures, key=lambda x: getattr(x, key.name))),
+            self,
+        )
+
+    def sort(self, key: Property, reverse=False) -> "FiguresList":
+        return FiguresList(
+            list(
+                sorted(
+                    self._figures, key=lambda x: getattr(x, key.name), reverse=reverse
+                )
+            )
+        )
+
     def to_list(self) -> List[Figure]:
         return self._figures
+
     def __len__(self) -> int:
         return len(self._figures)
-    def append(self, fig: Figure) -> 'FiguresList':
+
+    def append(self, fig: Figure) -> "FiguresList":
         self._figures.append(fig)
         return self
+
     def first_or_default(self, *args: PropertyCompare) -> FiguresListPointer:
         for i, el in enumerate(self._figures):
-            if all([(
-                (getattr(el, j.name) == j.value) if j.compare_type == CompareType.EQUALS else 
-                (getattr(el, j.name) > j.value) if j.compare_type == CompareType.GREATER else 
-                (getattr(el, j.name) >= j.value) if j.compare_type == CompareType.GREATER_EQUALS else 
-                (getattr(el, j.name) < j.value) if j.compare_type == CompareType.LOWER else 
-                (getattr(el, j.name) <= j.value) if j.compare_type == CompareType.LOWER_EQUALS else 
-                (getattr(el, j.name) != j.value) if j.compare_type == CompareType.NOT_EQUALS else False
-            ) for j in args]):
+            if all(
+                [
+                    (
+                        (getattr(el, j.name) == j.value)
+                        if j.compare_type == CompareType.EQUALS
+                        else (getattr(el, j.name) > j.value)
+                        if j.compare_type == CompareType.GREATER
+                        else (getattr(el, j.name) >= j.value)
+                        if j.compare_type == CompareType.GREATER_EQUALS
+                        else (getattr(el, j.name) < j.value)
+                        if j.compare_type == CompareType.LOWER
+                        else (getattr(el, j.name) <= j.value)
+                        if j.compare_type == CompareType.LOWER_EQUALS
+                        else (getattr(el, j.name) != j.value)
+                        if j.compare_type == CompareType.NOT_EQUALS
+                        else False
+                    )
+                    for j in args
+                ]
+            ):
                 return FiguresListPointer(i, self)
         return FiguresListPointer(-1, self, False)
-    def pop(self, index: int) -> 'FiguresList':
+
+    def pop(self, index: int) -> "FiguresList":
         self._figures.pop(index)
         return self
-    def remove(self, fig: Figure) -> 'FiguresList':
+
+    def remove(self, fig: Figure) -> "FiguresList":
         self._figures.remove(fig)
         return self
+
     def __getitem__(self, index: int) -> FiguresListPointer:
         size = self.length
         return FiguresListPointer(index, self, index < size)
+
     # def __setitem__(self, index: int, fig: Figure) -> None:
     #     self._figures[index] = fig
 
@@ -415,7 +773,7 @@ class FiguresList:
         return tuple(self._figures)
 
     def __iter__(self):
-        for (i, el) in enumerate(self._figures):
+        for i, el in enumerate(self._figures):
             yield FiguresListPointer(i, self)
 
     @property
@@ -457,19 +815,21 @@ class FiguresList:
     #         f.calculate()
     #     return [f.result for f in self.function_results]
 
-    def copy(self) -> 'FiguresList':
+    def copy(self) -> "FiguresList":
         return copy.deepcopy(self)
 
-    def compose(self, lists: List['FiguresList']) -> 'FiguresListComposition':
+    def compose(self, lists: List["FiguresList"]) -> "FiguresListComposition":
         allllllll = [self, *lists]
         return FiguresListComposition(allllllll)
 
     # def self_unique_compose(self) -> 'FiguresListUniqueComposition':
     #     ...
 
+
 class FiguresListComposition:
     def __init__(self, fig_lists: List[FiguresList]) -> None:
         self._lists = fig_lists
+
     def _recursive_list(self, lists: List[FiguresList]):
         if len(lists) == 1:
             return [[i.to_value()] for i in lists[0]]
@@ -478,7 +838,10 @@ class FiguresListComposition:
             for i in lists[0]:
                 l.append((i.to_value(), *other))
         return l
-    def exec_func(self, func, calc: bool = True, unpoint: bool = True) -> List[FunctionResult]:
+
+    def exec_func(
+        self, func, calc: bool = True, unpoint: bool = True
+    ) -> List[FunctionResult]:
         a = self._recursive_list(self._lists)
         # new = []
         # for elements in zip(*self._lists):
@@ -487,6 +850,7 @@ class FiguresListComposition:
         #     new.append(FunctionResult(func, elements, calc=calc))
         # return new
         return [FunctionResult(func, i, calc=calc) for i in a]
+
 
 # class FiguresListUniqueComposition:
 #     def _recursive_list(self, lists: List[FiguresList]):
@@ -498,22 +862,49 @@ class FiguresListComposition:
 #                 l.append((i.to_value(), *other))
 #         return l
 
+
+class BinarizedImage:
+    def __init__(self, img: np.ndarray, color_range: ColorRange) -> None:
+        self.img = img
+        self.color_range = color_range
+
+
 def find_figures(rgb: np.ndarray, params: FiguresSearchParams) -> FiguresSearchResult:
     hsv = cv2.cvtColor(rgb, cv2.COLOR_BGR2HSV)
     figures = []
+    bimages = []
     for range in params.color_ranges:
         color_min = range.min_color.to_tuple()
         color_max = range.max_color.to_tuple()
         bin = cv2.inRange(hsv, color_min, color_max)
-        contours, _ = cv2.findContours(bin, params.contours_mode, params.contours_find_method)
+
+        for sr in range.subranges:
+            color_min = sr.min_color.to_tuple()
+            color_max = sr.max_color.to_tuple()
+            bin |= cv2.inRange(hsv, color_min, color_max)
+
+        bimages.append(BinarizedImage(bin, range))
+
+        contours, _ = cv2.findContours(
+            bin, params.contours_mode, params.contours_find_method
+        )
         for cnt in contours:
             area = cv2.contourArea(cnt)
             if area > params.min_contour_area:
-                fig = Figure(color_range=range, cnt=cnt, cnt_area=area, color_name=range.name)
-                if not fig.define_center(cnt): continue # if no center found. HOW? - yes!
+                fig = Figure(
+                    color_range=range,
+                    cnt=cnt,
+                    cnt_area=area,
+                    color_name=range.name,
+                    allowed_shapes=params.allowed_shapes,
+                    convexity_defects_min_distance=params.convexity_defects_min_distance,
+                )
+                if not fig.define_center(cnt):
+                    continue  # if no center found. HOW? - yes!
                 fig.define_shape(cnt)
                 figures.append(fig)
-    return FiguresSearchResult(figures)
+    return FiguresSearchResult(figures, bimages)
+
 
 class PD:
     _kp = 0.0
@@ -537,14 +928,16 @@ class PD:
         timestamp = int(round(t.time() * 1000))  # в timestamp записываем
         try:
             # время(выраженное в секундах) и домножаем до милисекунд, round отбрасывает знаки после запятой
-            output = self._kp * error + self._kd / \
-                (timestamp - self._timestamp) * (error - self._prev_error)
+            output = self._kp * error + self._kd / (timestamp - self._timestamp) * (
+                error - self._prev_error
+            )
             # вычесляем выходное значение на моторы по ПД регулятору и записываем в output
             self._timestamp = timestamp  # перезаписываем время
             self._prev_error = error  # перезаписываем ошибку
             return output
         except ZeroDivisionError:
             return 0
+
 
 class Functions:
     @staticmethod
@@ -553,15 +946,15 @@ class Functions:
         cv2.waitKey(1)
 
     @staticmethod
-    def simulator_get_front_frame_func(auv: 'SmartAUV'):
+    def simulator_get_front_frame_func(auv: "SmartAUV"):
         return auv.get_image_front()
 
     @staticmethod
-    def simulator_get_bottom_frame_func(auv: 'SmartAUV'):
+    def simulator_get_bottom_frame_func(auv: "SmartAUV"):
         return auv.get_image_bottom()
 
     @staticmethod
-    def clamp(v: float, min_v: float, max_v: float) -> float: 
+    def clamp(v: float, min_v: float, max_v: float) -> float:
         """Clamp value between two ranges.
 
         Args:
@@ -577,9 +970,15 @@ class Functions:
         if v < min_v:
             return min_v
         return v
-    
+
     @staticmethod
-    def stabilizate_value_by_time(timer: float, value_to_set: float, current_value: float, accuracy: float, time_to_keep_value: float) -> Union[float, bool]:
+    def stabilizate_value_by_time(
+        timer: float,
+        value_to_set: float,
+        current_value: float,
+        accuracy: float,
+        time_to_keep_value: float,
+    ) -> Union[float, bool]:
         """Stabilizate value to be in accuracy range for any time.
 
         Args:
@@ -593,22 +992,28 @@ class Functions:
             Union[float, bool]: float - timer. Must be reset for this func after. bool - if stabilizated.
         """
         # print(value_to_set - accuracy, value_to_set + accuracy)
-        if value_to_set - accuracy <= current_value and current_value <= value_to_set + accuracy:
+        if (
+            value_to_set - accuracy <= current_value
+            and current_value <= value_to_set + accuracy
+        ):
             if t.time() > timer + time_to_keep_value:
                 return timer, True
         else:
-            timer = t.time() 
+            timer = t.time()
         return timer, False
 
 
-class SmartAUV(mur.simulator.Simulator):
-    def __init__(self, screen_size = (320, 240), 
-                 get_front_frame_func = Functions.simulator_get_front_frame_func, 
-                 get_bottom_frame_func = Functions.simulator_get_bottom_frame_func, 
-                 show_frame_func = Functions.opencv_show_func,
-                 yaw_regulator = PD(1, 0.001),
-                 depth_regulator = PD(10, 5),
-                 prepare: bool = True):
+class SmartAUV(mur.simulator.Simulator if USING_PYMURAPI else object):
+    def __init__(
+        self,
+        screen_size=(320, 240),
+        get_front_frame_func=Functions.simulator_get_front_frame_func,
+        get_bottom_frame_func=Functions.simulator_get_bottom_frame_func,
+        show_frame_func=Functions.opencv_show_func,
+        yaw_regulator=PD(1, 0.001),
+        depth_regulator=PD(10, 5),
+        prepare: bool = True,
+    ):
         super().__init__()
         self.screen_size = screen_size
         # self.get_frame_func = lambda x: np.zeros((screen_size[1], screen_size[0], 3), np.uint8)
@@ -629,21 +1034,24 @@ class SmartAUV(mur.simulator.Simulator):
 
         if prepare:
             self.prepare()
+
     # @property
     # def yaw(self):
     #     return self.get_yaw()
     # @property
     # def depth(self):
     #     return self.get_depth()
-    def set_thrusters(self,
-                      thruster_yaw_left_num: int = ...,
-                      thruster_yaw_right_num: int = ...,
-                      thruster_depth_left_num: int = ...,
-                      thruster_depth_right_num: int = ...,
-                      thruster_yaw_left_direction: int = ...,
-                      thruster_yaw_right_direction: int = ...,
-                      thruster_depth_left_direction: int = ...,
-                      thruster_depth_right_direction: int = ...):
+    def set_thrusters(
+        self,
+        thruster_yaw_left_num: int = ...,
+        thruster_yaw_right_num: int = ...,
+        thruster_depth_left_num: int = ...,
+        thruster_depth_right_num: int = ...,
+        thruster_yaw_left_direction: int = ...,
+        thruster_yaw_right_direction: int = ...,
+        thruster_depth_left_direction: int = ...,
+        thruster_depth_right_direction: int = ...,
+    ):
         if thruster_yaw_left_num is not ...:
             self.THRUSTER_YAW_LEFT = thruster_yaw_left_num
         if thruster_yaw_right_num is not ...:
@@ -661,19 +1069,34 @@ class SmartAUV(mur.simulator.Simulator):
             self.THRUSTER_DEPTH_LEFT_DIRECTION = thruster_depth_left_direction
         if thruster_depth_right_direction is not ...:
             self.THRUSTER_DEPTH_RIGHT_DIRECTION = thruster_depth_right_direction
+
     def set_get_front_frame_func(self, func):
         self.get_front_frame_func = func
+
     def set_get_bottom_frame_func(self, func):
         self.get_bottom_frame_func = func
+
     def set_show_frame_func(self, func):
         self.show_frame_func = func
+
     def __enter__(self):
         return self.get_front_frame_func(self), self.get_bottom_frame_func(self)
+
     def __exit__(self, *args, **kwargs):
         ...
+
     def show(self, frame):
         self.show_frame_func(frame)
-    def stab_by_arrow(self, arrow_color_range: ColorRange, time_to_stab: float = 5, accuracy: float = 5, show_video: bool = True, draw_arrows: bool = True, depth_to_keep: float = 2) -> float:
+
+    def stab_by_arrow(
+        self,
+        arrow_color_range: ColorRange,
+        time_to_stab: float = 5,
+        accuracy: float = 5,
+        show_video: bool = True,
+        draw_arrows: bool = True,
+        depth_to_keep: float = 2,
+    ) -> float:
         timer = t.time()
         while True:
             # frame = auv.get_image_bottom()
@@ -681,22 +1104,35 @@ class SmartAUV(mur.simulator.Simulator):
             # print(frame.shape)
             draw = frame.copy()
             f = find_figures(frame, FiguresSearchParams([arrow_color_range])).figures
-            triangle_p = f.where(Figure.color_name == 'orange', Figure.shape == ShapeType.TRIANGLE).max(Figure.cnt_area)
+            triangle_p = f.where(
+                Figure.color_name == "orange", Figure.shape == ShapeType.TRIANGLE
+            ).max(Figure.cnt_area)
             if not triangle_p.is_bad_index:
                 f_triangle = triangle_p.to_value()
                 if draw_arrows:
                     f_triangle.draw_figure(draw, thickness=3)
                 if f_triangle.define_arrow_angle():
                     print(f_triangle.arrow_angle)
-                    timer, stabilizated = Functions.stabilizate_value_by_time(timer, self.get_yaw() + f_triangle.arrow_angle, self.get_yaw(), accuracy, time_to_stab)
+                    timer, stabilizated = Functions.stabilizate_value_by_time(
+                        timer,
+                        self.get_yaw() + f_triangle.arrow_angle,
+                        self.get_yaw(),
+                        accuracy,
+                        time_to_stab,
+                    )
                     if stabilizated:
-                        # print("Stabbed!") 
+                        # print("Stabbed!")
                         return
                         # keep(auv.get_yaw() - f_triangle.arrow_angle, 3, time)
                     else:
-                        self.keep(self.get_yaw() - f_triangle.arrow_angle, depth_to_keep, time=0.01)
+                        self.keep(
+                            self.get_yaw() - f_triangle.arrow_angle,
+                            depth_to_keep,
+                            time=0.01,
+                        )
             if show_video:
                 self.show_frame_func(draw)
+
     def keep_yaw(self, yaw_to_set: float, move_speed: float = 0):
         """Keep robot yaw and move forward/backward.
 
@@ -704,9 +1140,16 @@ class SmartAUV(mur.simulator.Simulator):
             yaw_to_set (float): Yaw to set
             move_speed (float, optional): Speed to move forward. Defaults to 0.
         """
-        err = Functions.clamp(self.yaw_pd.process(yaw_to_set - self.get_yaw()), -100, 100)
-        self.set_motor_power(self.THRUSTER_YAW_LEFT, move_speed+err*self.THRUSTER_YAW_LEFT_DIRECTION)
-        self.set_motor_power(self.THRUSTER_YAW_RIGHT, move_speed-err*self.THRUSTER_YAW_RIGHT_DIRECTION)
+        err = Functions.clamp(
+            self.yaw_pd.process(yaw_to_set - self.get_yaw()), -100, 100
+        )
+        self.set_motor_power(
+            self.THRUSTER_YAW_LEFT, move_speed + err * self.THRUSTER_YAW_LEFT_DIRECTION
+        )
+        self.set_motor_power(
+            self.THRUSTER_YAW_RIGHT,
+            move_speed - err * self.THRUSTER_YAW_RIGHT_DIRECTION,
+        )
         t.sleep(0.1)
 
     def keep_depth(self, depth_to_det: float):
@@ -715,12 +1158,24 @@ class SmartAUV(mur.simulator.Simulator):
         Args:
             depth_to_det (float): Depth to set.
         """
-        err = Functions.clamp(self.depth_pd.process(depth_to_det - self.get_depth()), -100, 100)
-        self.set_motor_power(self.THRUSTER_DEPTH_LEFT, -err*self.THRUSTER_DEPTH_LEFT_DIRECTION)
-        self.set_motor_power(self.THRUSTER_DEPTH_RIGHT, -err*self.THRUSTER_DEPTH_RIGHT_DIRECTION)
+        err = Functions.clamp(
+            self.depth_pd.process(depth_to_det - self.get_depth()), -100, 100
+        )
+        self.set_motor_power(
+            self.THRUSTER_DEPTH_LEFT, -err * self.THRUSTER_DEPTH_LEFT_DIRECTION
+        )
+        self.set_motor_power(
+            self.THRUSTER_DEPTH_RIGHT, -err * self.THRUSTER_DEPTH_RIGHT_DIRECTION
+        )
         t.sleep(0.1)
 
-    def keep(self, yaw_to_set: float = ..., depth_to_set: float = ..., move_speed: float = 0, time: float = 0):
+    def keep(
+        self,
+        yaw_to_set: float = ...,
+        depth_to_set: float = ...,
+        move_speed: float = 0,
+        time: float = 0,
+    ):
         """Keep depth, yaw and move robot forward/backward.
 
         Args:
@@ -734,29 +1189,62 @@ class SmartAUV(mur.simulator.Simulator):
             if yaw_to_set is not ...:
                 self.keep_yaw(yaw_to_set, move_speed)
             else:
-                self.set_motor_power(self.THRUSTER_YAW_LEFT, move_speed*self.THRUSTER_YAW_LEFT_DIRECTION)
-                self.set_motor_power(self.THRUSTER_YAW_RIGHT, -move_speed*self.THRUSTER_YAW_RIGHT_DIRECTION)
+                self.set_motor_power(
+                    self.THRUSTER_YAW_LEFT,
+                    move_speed * self.THRUSTER_YAW_LEFT_DIRECTION,
+                )
+                self.set_motor_power(
+                    self.THRUSTER_YAW_RIGHT,
+                    -move_speed * self.THRUSTER_YAW_RIGHT_DIRECTION,
+                )
             if depth_to_set is not ...:
                 self.keep_depth(depth_to_set)
             t.sleep(0.01)
-    def move_to_color(self, color_range: ColorRange, delay_time: int = 0, depth_to_keep: float = 3, yaw_to_keep: float = ..., forward_speed: float = 50, show_frame: bool = True):
+
+    def move_to_color(
+        self,
+        color_range: ColorRange,
+        delay_time: int = 0,
+        depth_to_keep: float = 3,
+        yaw_to_keep: float = ...,
+        forward_speed: float = 50,
+        show_frame: bool = True,
+    ):
         timer = t.time()
         if yaw_to_keep is ...:
             yaw_to_keep = self.get_yaw()
         while True:
             frame = self.get_front_frame_func(self)
             figures = find_figures(frame, FiguresSearchParams([color_range])).figures
-            pointer = figures.where(Figure.color_name == 'orange', Figure.shape == ShapeType.TRIANGLE).max(Figure.cnt_area)
+            pointer = figures.where(
+                Figure.color_name == "orange", Figure.shape == ShapeType.TRIANGLE
+            ).max(Figure.cnt_area)
             if not pointer.is_bad_index:
                 pointer.to_value().draw_figure(frame)
-            timer, stabilizated = Functions.stabilizate_value_by_time(timer, 1, 0 if pointer.is_bad_index else 1, accuracy=0, time_to_keep_value=delay_time)
+            timer, stabilizated = Functions.stabilizate_value_by_time(
+                timer,
+                1,
+                0 if pointer.is_bad_index else 1,
+                accuracy=0,
+                time_to_keep_value=delay_time,
+            )
             if stabilizated:
                 return
             else:
-                self.keep(yaw_to_keep, depth_to_keep, time=0.01, move_speed=forward_speed)
+                self.keep(
+                    yaw_to_keep, depth_to_keep, time=0.01, move_speed=forward_speed
+                )
             if show_frame:
                 self.show_frame_func(frame)
-    def forward(self, time: float, yaw_to_keep: float = ..., depth_to_keep: float = ..., speed: float = 50, show_frame: bool = True):
+
+    def forward(
+        self,
+        time: float,
+        yaw_to_keep: float = ...,
+        depth_to_keep: float = ...,
+        speed: float = 50,
+        show_frame: bool = True,
+    ):
         timer = t.time() + time
         if yaw_to_keep is ...:
             yaw_to_keep = self.get_yaw()
@@ -769,22 +1257,155 @@ class SmartAUV(mur.simulator.Simulator):
             if t.time() > timer:
                 return
 
-if __name__ == '__main__':
-    blueRange = ColorRange(Color(90, 100, 0), Color(150, 255, 200), 'blue')
-    greenRange = ColorRange(Color(30, 0, 0), Color(90, 255, 255), 'green')
-    blueWhite = Color(255, 255, 255, 'white')
-    searchParams = FiguresSearchParams([blueRange, greenRange], min_contour_area=10)
 
-    auv = SmartAUV()
+def batch_test(sequence):
+    if not hasattr(batch_test, "index"):
+        batch_test.index = 0
+
+    image = cv2.imread(sequence[batch_test.index])
+
+    if USING_IMUTILS:
+        image = imutils.resize(image, 320)
+
+    batch_test.index += 1
+    if batch_test.index >= len(sequence):
+        batch_test.index = 0
+
+    return image
+
+
+if __name__ == "__main__":
+    blueRange = ColorRange(Color(90, 100, 0), Color(150, 255, 200), "blue")
+    redRange = ColorRange(Color(0, 150, 20), Color(15, 255, 255), "red") + ColorRange(
+        Color(170, 150, 20), Color(180, 255, 255), "red"
+    )
+    yellowRange = ColorRange(Color(15, 0, 0), Color(45, 255, 255), "yellow")
+    greenRange = ColorRange(Color(45, 0, 0), Color(80, 255, 255), "green")
+
+    whiteColor = Color(255, 255, 255, "white")
+    greenColor = Color(0, 255, 0, "green")
+    redColor = Color(0, 0, 255, "red")
+    blueColor = Color(255, 0, 0, "blue")
+    yellowColor = Color(0, 255, 255, "yellow")
+    black = Color(0, 0, 0, "black")
+
+    searchParams = FiguresSearchParams(
+        [
+            redRange,
+            blueRange,
+            # yellowRange,
+            greenRange,
+        ],
+        min_contour_area=100,
+        allowed_shapes=ALL_SHAPES,
+        convexity_defects_min_distance=2000,
+    )
+
+    # sequence = [
+    #     "day-1/data/t1.png",
+    #     "day-1/data/t2.png",
+    #     "day-1/data/t3.png",
+    #     "day-1/data/t4.png",
+    # ]
+    sequence = [
+        "day-1/data/tr1.jpg",
+        "day-1/data/tr2.jpg",
+        "day-1/data/tr3.jpg",
+        "day-1/data/tr4.jpg",
+        "day-1/data/tr5.jpg",
+    ]
+    # cap = cv2.VideoCapture(0)
+
+    auv = SmartAUV(
+        # get_front_frame_func=lambda self: cap.read()[1],
+        get_front_frame_func=lambda self: batch_test(sequence),
+        get_bottom_frame_func=lambda self: None,
+        prepare=False,
+    )
+
     while True:
-        with auv as (_, image):
+        with auv as (image, _):
             draw = image.copy()
-            figures = find_figures(image, searchParams)
-            blueFigures = figures.figures.where(Figure.color_name == 'blue')
-            for f in blueFigures:
-                f.to_value().draw_figure(draw, blueWhite, 3)
-            greenFigures = figures.figures.where(Figure.color_name == 'green', Figure.shape == ShapeType.CIRCLE)
-            for f in greenFigures:
-                f.to_value().draw_figure(draw, blueWhite, 3)
+            results = find_figures(image, searchParams)
+            figures = results.figures
+            binaries = results.binaries
+
+            for b in binaries:
+                cv2.imshow(b.color_range.name, b.img)
+
+            icefishes = figures.where(Figure.shape == ShapeType.FISH)
+            for i in icefishes:
+                i.to_value().put_text(draw, "Fish", black)
+            phytoplankton = figures.where(Figure.color_range == greenRange)
+            for i in phytoplankton:
+                i.to_value().put_text(draw, "Plankton", black)
+
+            circles = figures.where(Figure.shape == ShapeType.CIRCLE)
+            shellfish_and_sea_urchins = circles.where(
+                Figure.color_range == redRange
+            ) + circles.where(Figure.color_range == yellowRange)
+
+            for i in shellfish_and_sea_urchins:
+                i.to_value().put_text(draw, "SS", black)
+
+            plants = figures.where(Figure.shape == ShapeType.TREE)
+            for i in plants:
+                i.to_value().put_text(draw, "Plant", black)
+
+            rectangles = figures.where(
+                Figure.shape == ShapeType.RECTANGLE
+            ) + figures.where(Figure.shape == ShapeType.SQUARE)
+            trash = (
+                rectangles.where(Figure.color_range == blueRange)
+                + rectangles.where(Figure.color_range == redRange)
+                + rectangles.where(Figure.color_range == yellowRange)
+                + figures.where(
+                    Figure.shape == ShapeType.CIRCLE, Figure.color_range == blueRange
+                )
+            )
+
+            all_figures = [
+                ("Icefish", icefishes), 
+                ("Phytoplankton", phytoplankton), 
+                ("Shellfish and sea urchins", shellfish_and_sea_urchins), 
+                ("Plants", plants)
+            ]
+            all_figures.sort(key=lambda x: len(x[1]), reverse=True)
+            all_figures.append(("Trash", trash))
+            draw_centers = [i.to_value().center for i in all_figures[0][1]]
+
+            for name, group in all_figures[1:]:
+                for i in group:
+                    v = i.to_value()
+                    if any([math.dist(c, v.center) < 20 for c in draw_centers]):
+                        continue
+
+                    v.draw_bounding_box(
+                        draw, redColor, 5, paddings=[-15, -15, -15, -15]
+                    )
+                    v.put_text(
+                        draw,
+                        "alien",
+                        redColor,
+                        anchor=AnchorType.TOP,
+                        paddings=[-20, -20],
+                    )
+                    draw_centers.append(v.center)
+
+            cv2.putText(draw, "Type: " + all_figures[0][0], (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+            cv2.putText(draw, "Depth: " + "-1", (10, 80), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+
+            print(
+                "Icefish:",
+                len(icefishes),
+                "plankton:",
+                len(phytoplankton),
+                "SS:",
+                len(shellfish_and_sea_urchins),
+                "plants:",
+                len(plants),
+                "trash:",
+                len(trash),
+            )
             auv.show(draw)
-            auv.keep_depth(1)
+            cv2.waitKey(0)
