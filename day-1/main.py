@@ -226,7 +226,7 @@ class Digit:
 
     def full_rect(self) -> List[int]:
         rect = (self.global_rect if self.global_rect is not None else [0]*4)
-        return self.local_rect + rect
+        return [self.local_rect[0] + rect[0], self.local_rect[1] + rect[1], self.local_rect[2] + rect[0], self.local_rect[3] + rect[1]]
 
     def draw_bounding_box(
         self,
@@ -627,10 +627,9 @@ class DigitsSearchParams:
         color_range: ColorRange = ...,
         kernel_size: int = 3,
         one_ratio: int = 3.7,
-        segwhite_ratio: float = 0.5,
+        segwhite_ratio: float = 0.7,
         height_error: int = 30,
-        crop_border_size: int = 1,
-        digit_size: int = 32,
+        digit_width: int = 64,
         roi_rect: List[int] = None,
         min_contour_area: float = 150,
     ) -> None:
@@ -639,9 +638,8 @@ class DigitsSearchParams:
         self.one_ratio = one_ratio
         self.segwhite_ratio = segwhite_ratio
         self.height_error = height_error
-        self.crop_border_size = crop_border_size
         self.roi_rect = roi_rect
-        self.digit_size = digit_size
+        self.digit_width = digit_width
         self.min_contour_area = min_contour_area
 
 
@@ -995,7 +993,7 @@ def classify_digit(bin: np.ndarray, rect: List[int], params: DigitsSearchParams)
     DIGITS_LOOKUP = {
         (1, 1, 1, 0, 1, 1, 1): 0,
         (0, 0, 1, 0, 0, 1, 0): 1,
-        (1, 0, 1, 1, 1, 1, 0): 2,
+        (1, 0, 1, 1, 1, 0, 1): 2,
         (1, 0, 1, 1, 0, 1, 1): 3,
         (0, 1, 1, 1, 0, 1, 0): 4,
         (1, 1, 0, 1, 0, 1, 1): 5,
@@ -1005,41 +1003,45 @@ def classify_digit(bin: np.ndarray, rect: List[int], params: DigitsSearchParams)
         (1, 1, 1, 1, 0, 1, 1): 9
     }
 
-    if rect[2] - rect[0] <= 2 * params.crop_border_size or \
-                rect[3] - rect[1] <= 2 * params.crop_border_size:
-            return None
-
-    crop = params.crop_border_size
-    roi = bin[rect[1]+crop:rect[3]-crop, rect[0]+crop:rect[2]-crop].copy()
+    roi = bin[rect[1]:rect[3], rect[0]:rect[2]].copy()
     (h, w) = roi.shape
 
     # detect the digit --> 1
     # move out this value to params
     if (h / w) > params.one_ratio:
-        return 1
+        return Digit(
+            value = 1,
+            global_rect = params.roi_rect,
+            local_rect = rect
+        )
 
-    roi = cv2.resize(roi, (params.digit_size, params.digit_size))
+    roi = cv2.resize(roi, (params.digit_width, int(params.digit_width / 0.6)))
     (h, w) = roi.shape
 
     (dW, dH) = (int(w * 0.25), int(h * 0.15))
     dHC = int(h * 0.05)
+    dBrd = int(w * 0.1)
     segments = [
-        ((0, 0), (w, dH)),  # top
-        ((0, 0), (dW, h // 2)), # top-left
-        ((w - dW, 0), (w, h // 2)), # top-right
-        ((0, (h // 2) - dHC) , (w, (h // 2) + dHC)), # center
-        ((0, h // 2), (dW, h)), # bottom-left
-        ((w - dW, h // 2), (w, h)), # bottom-right
-        ((0, h - dH), (w, h))   # bottom
+        ((dBrd, dBrd), (w - dBrd, dH + dBrd)),  # top
+        ((dBrd, dBrd), (dW + dBrd, h // 2)), # top-left
+        ((w - dW - dBrd, dBrd), (w - dBrd, h // 2)), # top-right
+        ((dBrd, (h // 2) - dHC) , (w - dBrd, (h // 2) + dHC)), # center
+        ((dBrd, h // 2), (dW + dBrd, h - dBrd)), # bottom-left
+        ((w - dW - dBrd, h // 2), (w - dBrd, h - dBrd)), # bottom-right
+        ((dBrd, h - dH - dBrd), (w - dBrd, h - dBrd))   # bottom
     ]
     on = [0] * len(segments)
 
     for (i, ((xA, yA), (xB, yB))) in enumerate(segments):
         segROI = roi[yA:yB, xA:xB]
         total = cv2.countNonZero(segROI)
+        cv2.rectangle(roi, (xA, yA), (xB, yB), 127, 1)
         area = (xB - xA) * (yB - yA)
         if total / (float(area) + pow(10, -10)) > params.segwhite_ratio:
             on[i]= 1
+
+    #cv2.imshow('roi', roi)
+    #cv2.waitKey(0)
 
     if tuple(on) not in DIGITS_LOOKUP:
         return None
@@ -1056,7 +1058,7 @@ def find_digits(rgb: np.ndarray, params: DigitsSearchParams) -> DigitsSearchResu
     if params.roi_rect is not None:
         # crop roi
         roi_rect = params.roi_rect
-        roi = hsv[roi_rect.y1:roi_rect.y2, roi_rect.x1:roi_rect.x2]
+        roi = hsv[roi_rect[1]:roi_rect[3], roi_rect[0]:roi_rect[2]]
 
     rng = params.color_range
     min_color = rng.min_color.to_tuple()
@@ -1070,7 +1072,7 @@ def find_digits(rgb: np.ndarray, params: DigitsSearchParams) -> DigitsSearchResu
 
     # hardcode the parameters of findContoures. We always search external cnt
     contours, _ = cv2.findContours(
-        bin, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        bin, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE
     )
 
     digits = []
@@ -1501,14 +1503,16 @@ if __name__ == "__main__":
             # yellowRange,
             greenRange,
         ],
-        min_contour_area=100,
+        min_contour_area=70,
         allowed_shapes=ALL_SHAPES,
         convexity_defects_min_distance=2000,
     )
 
     digitsSearchParams = DigitsSearchParams(
         color_range=ColorRange(Color(0, 0, 200), Color(180, 100, 255), "white"),
-        min_contour_area=80,
+        min_contour_area=70,
+        kernel_size=3,
+        roi_rect=[107, 20, 250, 170]
     )
 
     # sequence = [
@@ -1553,6 +1557,9 @@ if __name__ == "__main__":
             for digit in depth_digits:
                 digit.draw_bounding_box(draw, redColor, 2)
                 digit.put_text(draw, redColor, scale=0.5, paddings=[0, 5])
+
+            dig_roi = digitsSearchParams.roi_rect
+            cv2.rectangle(draw, (dig_roi[0], dig_roi[1]), (dig_roi[2], dig_roi[3]), (0, 50, 255), 2)
 
             results = find_figures(image, searchParams)
             figures = results.figures
