@@ -84,10 +84,7 @@ class Maath:
             angle = int(
                 math.asin(
                     (a * y2 - b * x2)
-                    / (
-                        ((a**2 + b**2) ** 0.5 + 0.000001)
-                        * ((x2**2 + y2**2) ** 0.5)
-                    )
+                    / (((a**2 + b**2) ** 0.5 + 0.000001) * ((x2**2 + y2**2) ** 0.5))
                 )
                 * 180
                 / math.pi
@@ -101,8 +98,7 @@ class Maath:
         # вычесляем угол
         angle = int(
             math.acos(
-                (a * x2 + b * y2)
-                / (((a**2 + b**2) ** 0.5) * ((x2**2 + y2**2) ** 0.5))
+                (a * x2 + b * y2) / (((a**2 + b**2) ** 0.5) * ((x2**2 + y2**2) ** 0.5))
             )
             * 180
             / math.pi
@@ -209,6 +205,7 @@ class AnchorType(Enum):
     TOP = 1
     CENTER = 2
 
+
 class Digit:
     value = Property("shape")
     global_rect = Property("global_rect")
@@ -225,8 +222,13 @@ class Digit:
         self.local_rect = local_rect
 
     def full_rect(self) -> List[int]:
-        rect = (self.global_rect if self.global_rect is not None else [0]*4)
-        return [self.local_rect[0] + rect[0], self.local_rect[1] + rect[1], self.local_rect[2] + rect[0], self.local_rect[3] + rect[1]]
+        rect = self.global_rect if self.global_rect is not None else [0] * 4
+        return [
+            self.local_rect[0] + rect[0],
+            self.local_rect[1] + rect[1],
+            self.local_rect[2] + rect[0],
+            self.local_rect[3] + rect[1],
+        ]
 
     def draw_bounding_box(
         self,
@@ -262,6 +264,7 @@ class Digit:
             color.to_tuple() if type(color) == Color else color,
             thickness=thickness,
         )
+
 
 class Figure:
     shape = Property("shape")
@@ -358,7 +361,14 @@ class Figure:
 
         self.hull = cv2.convexHull(cnt, returnPoints=False)
 
-        self.hull_defects = cv2.convexityDefects(cnt, self.hull)
+        try:  # for reason of cv2.error: OpenCV(4.8.0) D:\a\opencv-python\opencv-python\opencv\modules\imgproc\src\convhull.cpp:360: error: (-5:Bad argument) The convex hull indices are not monotonous, which can be in the case when the input contour contains self-intersections in function 'cv::convexityDefects'
+            self.hull_defects = cv2.convexityDefects(cnt, self.hull)
+        except:
+            # print(
+            #     "WARNING! The convex hull indices are not monotonous. Skipping this contour."
+            # )
+            self.hull_defects = np.array([])
+
         self.hull_defects = (
             np.array(
                 [
@@ -379,12 +389,12 @@ class Figure:
         if self.is_convex:
             if (
                 self.allowed(ShapeType.CIRCLE)
-                and rectangle_area > circle_area < s_triangle
+                and rectangle_area > circle_area * 0.8 < s_triangle
             ):
                 self.shape = ShapeType.CIRCLE
                 self.circle_radius = cR
             elif circle_area > rectangle_area < s_triangle:
-                if self.allowed(ShapeType.SQUARE) and 0.8 < w / h < 1.2:
+                if self.allowed(ShapeType.SQUARE) and 0.5 < w / h < 1.5:
                     self.shape = ShapeType.SQUARE
                 elif self.allowed(ShapeType.RECTANGLE):
                     self.shape = ShapeType.RECTANGLE
@@ -406,7 +416,7 @@ class Figure:
             vec_fe = (far[0] - end[0], far[1] - end[1])
 
             angle = math.degrees(math.acos(Maath.cos_between_vectors(vec_fs, vec_fe)))
-            if self.allowed(ShapeType.TREE) and angle < 80:
+            if self.allowed(ShapeType.TREE) and angle < 100:
                 self.shape = ShapeType.TREE
             elif self.allowed(ShapeType.FISH):
                 self.shape = ShapeType.FISH
@@ -604,6 +614,57 @@ class ColorRange:
         )
 
 
+class HSVTrackbars:
+    """Helper for HSV values arrangement."""
+
+    def __init__(self, winname):
+        self.winname = winname
+        self._created = False
+
+    def create(self):
+        nothing = lambda x: None
+
+        cv2.namedWindow(self.winname)
+        cv2.createTrackbar("H Lower", self.winname, 0, 179, nothing)
+        cv2.createTrackbar("H Higher", self.winname, 179, 179, nothing)
+        cv2.createTrackbar("S Lower", self.winname, 0, 255, nothing)
+        cv2.createTrackbar("S Higher", self.winname, 255, 255, nothing)
+        cv2.createTrackbar("V Lower", self.winname, 0, 255, nothing)
+        cv2.createTrackbar("V Higher", self.winname, 255, 255, nothing)
+        self._created = True
+
+    @property
+    def is_created(self):
+        return self._created
+
+    def get(self):
+        hL = cv2.getTrackbarPos("H Lower", self.winname)
+        hH = cv2.getTrackbarPos("H Higher", self.winname)
+        sL = cv2.getTrackbarPos("S Lower", self.winname)
+        sH = cv2.getTrackbarPos("S Higher", self.winname)
+        vL = cv2.getTrackbarPos("V Lower", self.winname)
+        vH = cv2.getTrackbarPos("V Higher", self.winname)
+
+        lowerRegion = np.array([hL, sL, vL], np.uint8)
+        upperRegion = np.array([hH, sH, vH], np.uint8)
+
+        return lowerRegion, upperRegion
+
+    def process(self, bgr: np.ndarray):
+        if not self.is_created:
+            return
+
+        low, high = self.get()
+        o = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        o = cv2.morphologyEx(
+            o, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        )
+        cv2.imshow(
+            self.winname,
+            cv2.inRange(o, low, high),
+        )
+
+
 class FiguresSearchParams:
     def __init__(
         self,
@@ -620,6 +681,7 @@ class FiguresSearchParams:
         self.contours_find_method = contours_find_method
         self.allowed_shapes = allowed_shapes
         self.convexity_defects_min_distance = convexity_defects_min_distance
+
 
 class DigitsSearchParams:
     def __init__(
@@ -643,6 +705,38 @@ class DigitsSearchParams:
         self.min_contour_area = min_contour_area
 
 
+class FrameSearchParams:
+    def __init__(
+        self,
+        threshold: int = 10,
+        underline_aspect_ratio: float = 8,
+        underline_width_coefficient: float = 0.9,
+        opening_kernel_size: Tuple[int, int] = (5, 5),
+        top_crop: float = 0.2,
+        bottom_crop: float = 0,
+        min_contour_area: int = 100,
+    ):
+        self.threshold = threshold
+        self.underline_aspect_ratio = underline_aspect_ratio
+        self.underline_width_coefficient = underline_width_coefficient
+        self.opening_kernel_size = opening_kernel_size
+        self.top_crop = top_crop
+        self.bottom_crop = bottom_crop
+        self.min_contour_area = min_contour_area
+
+
+class FrameSearchResult:
+    def __init__(
+        self, box: Union[Tuple[int, int, int, int], None], cnt: Union[np.ndarray, None]
+    ) -> None:
+        self.box = box
+        self.cnt = cnt
+
+    @property
+    def is_found(self):
+        return self.box is not None
+
+
 class FiguresSearchResult:
     def __init__(
         self, figures: List[Figure] = None, binaries: List["BinarizedImage"] = []
@@ -655,9 +749,10 @@ class FiguresSearchResult:
     def has_any_figure(self) -> bool:
         return len(self.figures) > 0
 
+
 class DigitsSearchResult:
     def __init__(
-        self, 
+        self,
         digits: List[Digit] = None,
     ) -> None:
         self.digits = digits
@@ -759,17 +854,29 @@ class FiguresList:
                             (
                                 (getattr(i, j.name) == j.value)
                                 if j.compare_type == CompareType.EQUALS
-                                else (getattr(i, j.name) > j.value)
-                                if j.compare_type == CompareType.GREATER
-                                else (getattr(i, j.name) >= j.value)
-                                if j.compare_type == CompareType.GREATER_EQUALS
-                                else (getattr(i, j.name) < j.value)
-                                if j.compare_type == CompareType.LOWER
-                                else (getattr(i, j.name) <= j.value)
-                                if j.compare_type == CompareType.LOWER_EQUALS
-                                else (getattr(i, j.name) != j.value)
-                                if j.compare_type == CompareType.NOT_EQUALS
-                                else False
+                                else (
+                                    (getattr(i, j.name) > j.value)
+                                    if j.compare_type == CompareType.GREATER
+                                    else (
+                                        (getattr(i, j.name) >= j.value)
+                                        if j.compare_type == CompareType.GREATER_EQUALS
+                                        else (
+                                            (getattr(i, j.name) < j.value)
+                                            if j.compare_type == CompareType.LOWER
+                                            else (
+                                                (getattr(i, j.name) <= j.value)
+                                                if j.compare_type
+                                                == CompareType.LOWER_EQUALS
+                                                else (
+                                                    (getattr(i, j.name) != j.value)
+                                                    if j.compare_type
+                                                    == CompareType.NOT_EQUALS
+                                                    else False
+                                                )
+                                            )
+                                        )
+                                    )
+                                )
                             )
                             for j in args
                         ]
@@ -820,17 +927,27 @@ class FiguresList:
                     (
                         (getattr(el, j.name) == j.value)
                         if j.compare_type == CompareType.EQUALS
-                        else (getattr(el, j.name) > j.value)
-                        if j.compare_type == CompareType.GREATER
-                        else (getattr(el, j.name) >= j.value)
-                        if j.compare_type == CompareType.GREATER_EQUALS
-                        else (getattr(el, j.name) < j.value)
-                        if j.compare_type == CompareType.LOWER
-                        else (getattr(el, j.name) <= j.value)
-                        if j.compare_type == CompareType.LOWER_EQUALS
-                        else (getattr(el, j.name) != j.value)
-                        if j.compare_type == CompareType.NOT_EQUALS
-                        else False
+                        else (
+                            (getattr(el, j.name) > j.value)
+                            if j.compare_type == CompareType.GREATER
+                            else (
+                                (getattr(el, j.name) >= j.value)
+                                if j.compare_type == CompareType.GREATER_EQUALS
+                                else (
+                                    (getattr(el, j.name) < j.value)
+                                    if j.compare_type == CompareType.LOWER
+                                    else (
+                                        (getattr(el, j.name) <= j.value)
+                                        if j.compare_type == CompareType.LOWER_EQUALS
+                                        else (
+                                            (getattr(el, j.name) != j.value)
+                                            if j.compare_type == CompareType.NOT_EQUALS
+                                            else False
+                                        )
+                                    )
+                                )
+                            )
+                        )
                     )
                     for j in args
                 ]
@@ -989,7 +1106,10 @@ def find_figures(rgb: np.ndarray, params: FiguresSearchParams) -> FiguresSearchR
                 figures.append(fig)
     return FiguresSearchResult(figures, bimages)
 
-def classify_digit(bin: np.ndarray, rect: List[int], params: DigitsSearchParams) -> Digit:
+
+def classify_digit(
+    bin: np.ndarray, rect: List[int], params: DigitsSearchParams
+) -> Digit:
     DIGITS_LOOKUP = {
         (1, 1, 1, 0, 1, 1, 1): 0,
         (0, 0, 1, 0, 0, 1, 0): 1,
@@ -1000,20 +1120,16 @@ def classify_digit(bin: np.ndarray, rect: List[int], params: DigitsSearchParams)
         (1, 1, 0, 1, 1, 1, 1): 6,
         (1, 0, 1, 0, 0, 1, 0): 7,
         (1, 1, 1, 1, 1, 1, 1): 8,
-        (1, 1, 1, 1, 0, 1, 1): 9
+        (1, 1, 1, 1, 0, 1, 1): 9,
     }
 
-    roi = bin[rect[1]:rect[3], rect[0]:rect[2]].copy()
+    roi = bin[rect[1] : rect[3], rect[0] : rect[2]].copy()
     (h, w) = roi.shape
 
     # detect the digit --> 1
     # move out this value to params
     if (h / w) > params.one_ratio:
-        return Digit(
-            value = 1,
-            global_rect = params.roi_rect,
-            local_rect = rect
-        )
+        return Digit(value=1, global_rect=params.roi_rect, local_rect=rect)
 
     roi = cv2.resize(roi, (params.digit_width, int(params.digit_width / 0.6)))
     (h, w) = roi.shape
@@ -1023,33 +1139,29 @@ def classify_digit(bin: np.ndarray, rect: List[int], params: DigitsSearchParams)
     dBrd = int(w * 0.1)
     segments = [
         ((dBrd, dBrd), (w - dBrd, dH + dBrd)),  # top
-        ((dBrd, dBrd), (dW + dBrd, h // 2)), # top-left
-        ((w - dW - dBrd, dBrd), (w - dBrd, h // 2)), # top-right
-        ((dBrd, (h // 2) - dHC) , (w - dBrd, (h // 2) + dHC)), # center
-        ((dBrd, h // 2), (dW + dBrd, h - dBrd)), # bottom-left
-        ((w - dW - dBrd, h // 2), (w - dBrd, h - dBrd)), # bottom-right
-        ((dBrd, h - dH - dBrd), (w - dBrd, h - dBrd))   # bottom
+        ((dBrd, dBrd), (dW + dBrd, h // 2)),  # top-left
+        ((w - dW - dBrd, dBrd), (w - dBrd, h // 2)),  # top-right
+        ((dBrd, (h // 2) - dHC), (w - dBrd, (h // 2) + dHC)),  # center
+        ((dBrd, h // 2), (dW + dBrd, h - dBrd)),  # bottom-left
+        ((w - dW - dBrd, h // 2), (w - dBrd, h - dBrd)),  # bottom-right
+        ((dBrd, h - dH - dBrd), (w - dBrd, h - dBrd)),  # bottom
     ]
     on = [0] * len(segments)
 
-    for (i, ((xA, yA), (xB, yB))) in enumerate(segments):
+    for i, ((xA, yA), (xB, yB)) in enumerate(segments):
         segROI = roi[yA:yB, xA:xB]
         total = cv2.countNonZero(segROI)
         cv2.rectangle(roi, (xA, yA), (xB, yB), 127, 1)
         area = (xB - xA) * (yB - yA)
         if total / (float(area) + pow(10, -10)) > params.segwhite_ratio:
-            on[i]= 1
-
-    #cv2.imshow('roi', roi)
-    #cv2.waitKey(0)
+            on[i] = 1
 
     if tuple(on) not in DIGITS_LOOKUP:
         return None
     return Digit(
-            value = DIGITS_LOOKUP[tuple(on)],
-            global_rect = params.roi_rect,
-            local_rect = rect
-        )
+        value=DIGITS_LOOKUP[tuple(on)], global_rect=params.roi_rect, local_rect=rect
+    )
+
 
 def find_digits(rgb: np.ndarray, params: DigitsSearchParams) -> DigitsSearchResult:
     hsv = cv2.cvtColor(rgb, cv2.COLOR_BGR2HSV)
@@ -1058,7 +1170,7 @@ def find_digits(rgb: np.ndarray, params: DigitsSearchParams) -> DigitsSearchResu
     if params.roi_rect is not None:
         # crop roi
         roi_rect = params.roi_rect
-        roi = hsv[roi_rect[1]:roi_rect[3], roi_rect[0]:roi_rect[2]]
+        roi = hsv[roi_rect[1] : roi_rect[3], roi_rect[0] : roi_rect[2]]
 
     rng = params.color_range
     min_color = rng.min_color.to_tuple()
@@ -1067,13 +1179,11 @@ def find_digits(rgb: np.ndarray, params: DigitsSearchParams) -> DigitsSearchResu
 
     # a bit of filters...
     ksize = params.kernel_size
-    kernel = np.ones((ksize, ksize), np.uint8) 
+    kernel = np.ones((ksize, ksize), np.uint8)
     bin = cv2.erode(bin, kernel)
 
     # hardcode the parameters of findContoures. We always search external cnt
-    contours, _ = cv2.findContours(
-        bin, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE
-    )
+    contours, _ = cv2.findContours(bin, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
 
     digits = []
     for cnt in contours:
@@ -1086,12 +1196,7 @@ def find_digits(rgb: np.ndarray, params: DigitsSearchParams) -> DigitsSearchResu
         digits_count = round((w / h) * 2)
         step = w / digits_count
         for i in range(digits_count):
-            digit_rect = [
-                x + i * step, 
-                y, 
-                x + min((i + 1) * step, w), 
-                y + h
-            ]
+            digit_rect = [x + i * step, y, x + min((i + 1) * step, w), y + h]
             digit_rect = list(map(int, digit_rect))
             digit_value = classify_digit(bin, digit_rect, params)
 
@@ -1100,17 +1205,73 @@ def find_digits(rgb: np.ndarray, params: DigitsSearchParams) -> DigitsSearchResu
 
         if digits_count == 0:
             # check full roi (when one digit in it)
-            digit_rect = [
-                x, 
-                y, 
-                x + w, 
-                y + h
-            ]
+            digit_rect = [x, y, x + w, y + h]
             digit_value = classify_digit(bin, digit_rect, params)
             if digit_value is not None:
                 digits.append(digit_value)
 
     return DigitsSearchResult(digits)
+
+
+def find_frame(rgb: np.ndarray, params: FrameSearchParams) -> FrameSearchResult:
+    """Finds frame on image based on black underline, adds underline width, multiplied by a coefficient, as -y to the underline box.
+
+    Args:
+        rgb (np.ndarray): BGR image.
+        params (FrameSearchParams): Search parameters.
+
+    Returns:
+        FrameSearchResult: search result.
+    """
+    _, thresh = cv2.threshold(
+        cv2.cvtColor(image, cv2.COLOR_BGR2GRAY),
+        params.threshold,
+        255,
+        cv2.THRESH_BINARY_INV,
+    )
+    thresh = cv2.morphologyEx(
+        thresh,
+        cv2.MORPH_OPEN,
+        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, params.opening_kernel_size),
+    )
+    sl = int(thresh.shape[0] * params.top_crop)
+    thresh = thresh[sl:, :]
+
+    cnts, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    cs = []
+    if len(cnts) > 0:
+        for c in cnts:
+            x, y, w, h = cv2.boundingRect(c)
+            hull = cv2.convexHull(c)
+            if (
+                cv2.contourArea(c) > params.min_contour_area
+                and w / h > params.underline_aspect_ratio
+            ):
+                cs.append(c)
+    if len(cs) > 0:
+        c = max(cs, key=lambda x: cv2.boundingRect(x)[1])
+        x, y, w, h = cv2.boundingRect(c)
+        h += int(w * params.underline_width_coefficient)
+        y -= int(w * params.underline_width_coefficient)
+        y += sl
+        return FrameSearchResult((x, y, w, h), c)
+    return FrameSearchResult(None, None)
+
+
+def focus(bgr: np.ndarray, box: Tuple[int, int, int, int]):
+    """Takes a defined region from an original image and pastes this region to the new black image with the same size as original.
+
+    Args:
+        bgr (np.ndarray): BGR image.
+        box (Tuple[int, int, int, int]): A region to focus.
+
+    Returns:
+        np.ndarray: new image.
+    """
+    x, y, w, h = box
+    newimage = np.zeros(bgr.shape, np.uint8)
+    newimage[max(y, 0) : y + h, x : x + w, :] = image[max(y, 0) : y + h, x : x + w, :]
+    return newimage
 
 
 class PD:
@@ -1289,8 +1450,7 @@ class SmartAUV(mur.simulator.Simulator if USING_PYMURAPI else object):
     def __enter__(self):
         return self.get_front_frame_func(self), self.get_bottom_frame_func(self)
 
-    def __exit__(self, *args, **kwargs):
-        ...
+    def __exit__(self, *args, **kwargs): ...
 
     def show(self, frame):
         self.show_frame_func(frame)
@@ -1482,12 +1642,23 @@ def batch_test(sequence):
 
 
 if __name__ == "__main__":
-    blueRange = ColorRange(Color(90, 100, 0), Color(150, 255, 200), "blue")
-    redRange = ColorRange(Color(0, 150, 20), Color(15, 255, 255), "red") + ColorRange(
-        Color(170, 150, 20), Color(180, 255, 255), "red"
-    )
-    yellowRange = ColorRange(Color(15, 0, 0), Color(45, 255, 255), "yellow")
-    greenRange = ColorRange(Color(45, 0, 0), Color(80, 255, 255), "green")
+    RANGES_TEST = {
+        "blue": ColorRange(Color(90, 100, 0), Color(150, 255, 200), "blue"),
+        "red": ColorRange(Color(0, 150, 20), Color(15, 255, 255), "red")
+        + ColorRange(Color(170, 150, 20), Color(180, 255, 255), "red"),
+        "yellow": ColorRange(Color(15, 0, 0), Color(45, 255, 255), "yellow"),
+        "green": ColorRange(Color(45, 0, 0), Color(80, 255, 255), "green"),
+    }
+
+    RANGES_ROBOT = {
+        "blue": ColorRange(Color(90, 100, 0), Color(150, 255, 200), "blue"),  # ok
+        "red": ColorRange(Color(0, 150, 30), Color(15, 255, 255), "red")  # good
+        + ColorRange(Color(170, 150, 30), Color(180, 255, 255), "red"),
+        "yellow": ColorRange(Color(24, 242, 0), Color(39, 255, 133), "yellow"),  # idk
+        "green": ColorRange(Color(56, 169, 34), Color(63, 255, 255), "green"),  # bad
+    }
+
+    ranges = RANGES_ROBOT
 
     whiteColor = Color(255, 255, 255, "white")
     greenColor = Color(0, 255, 0, "green")
@@ -1498,21 +1669,21 @@ if __name__ == "__main__":
 
     searchParams = FiguresSearchParams(
         [
-            redRange,
-            blueRange,
-            # yellowRange,
-            greenRange,
+            ranges["red"],
+            ranges["blue"],
+            ranges["yellow"],
+            ranges["green"],
         ],
         min_contour_area=70,
         allowed_shapes=ALL_SHAPES,
-        convexity_defects_min_distance=2000,
+        convexity_defects_min_distance=1000,
     )
 
     digitsSearchParams = DigitsSearchParams(
         color_range=ColorRange(Color(0, 0, 200), Color(180, 100, 255), "white"),
         min_contour_area=70,
         kernel_size=3,
-        roi_rect=[107, 20, 250, 170]
+        roi_rect=[107, 20, 250, 170],
     )
 
     # sequence = [
@@ -1521,127 +1692,168 @@ if __name__ == "__main__":
     #     "day-1/data/t3.png",
     #     "day-1/data/t4.png",
     # ]
-    #sequence = [
+    # sequence = [
     #    "day-1/data/tr1.jpg",
     #    "day-1/data/tr2.jpg",
     #    "day-1/data/tr3.jpg",
     #    "day-1/data/tr4.jpg",
     #    "day-1/data/tr5.jpg",
-    #]
+    # ]
     # cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture("day-1/data/vid2.mp4")
 
     # test digits
-    sequence = [
-        "data/digits.png",
-        "data/digits_1.png"
-    ]
+    sequence = ["day-1/data/digits.png", "day-1/data/digits_1.png"]
 
     auv = SmartAUV(
-        # get_front_frame_func=lambda self: cap.read()[1],
-        get_front_frame_func=lambda self: batch_test(sequence),
+        get_front_frame_func=lambda self: cap.read()[1],
+        # get_front_frame_func=lambda self: batch_test(sequence),
         get_bottom_frame_func=lambda self: None,
         prepare=False,
     )
+
+    trackbars = HSVTrackbars("HSV Trackbars")
+    trackbars.create()
 
     while True:
         with auv as (image, _):
             draw = image.copy()
 
             digitsSearch = find_digits(image, digitsSearchParams)
-            # find first digit of depth
-            start_digit = min(digitsSearch.digits, key=lambda x: x.full_rect()[1])
-            # find another digit, where height is similarly to height of start digit
-            depth_digits = filter(lambda x: abs(x.full_rect()[1] - start_digit.full_rect()[1]) <= digitsSearchParams.height_error, digitsSearch.digits)
-            depth_digits = sorted(depth_digits, key=lambda x: x.full_rect()[0])
-            # for test
-            for digit in depth_digits:
-                digit.draw_bounding_box(draw, redColor, 2)
-                digit.put_text(draw, redColor, scale=0.5, paddings=[0, 5])
-
-            dig_roi = digitsSearchParams.roi_rect
-            cv2.rectangle(draw, (dig_roi[0], dig_roi[1]), (dig_roi[2], dig_roi[3]), (0, 50, 255), 2)
-
-            results = find_figures(image, searchParams)
-            figures = results.figures
-            binaries = results.binaries
-
-            for b in binaries:
-                cv2.imshow(b.color_range.name, b.img)
-
-            icefishes = figures.where(Figure.shape == ShapeType.FISH)
-            for i in icefishes:
-                i.to_value().put_text(draw, "Fish", black)
-            phytoplankton = figures.where(Figure.color_range == greenRange)
-            for i in phytoplankton:
-                i.to_value().put_text(draw, "Plankton", black)
-
-            circles = figures.where(Figure.shape == ShapeType.CIRCLE)
-            shellfish_and_sea_urchins = circles.where(
-                Figure.color_range == redRange
-            ) + circles.where(Figure.color_range == yellowRange)
-
-            for i in shellfish_and_sea_urchins:
-                i.to_value().put_text(draw, "SS", black)
-
-            plants = figures.where(Figure.shape == ShapeType.TREE)
-            for i in plants:
-                i.to_value().put_text(draw, "Plant", black)
-
-            rectangles = figures.where(
-                Figure.shape == ShapeType.RECTANGLE
-            ) + figures.where(Figure.shape == ShapeType.SQUARE)
-            trash = (
-                rectangles.where(Figure.color_range == blueRange)
-                + rectangles.where(Figure.color_range == redRange)
-                + rectangles.where(Figure.color_range == yellowRange)
-                + figures.where(
-                    Figure.shape == ShapeType.CIRCLE, Figure.color_range == blueRange
+            if len(digitsSearch.digits) > 0:
+                # find first digit of depth
+                start_digit = min(digitsSearch.digits, key=lambda x: x.full_rect()[1])
+                # find another digit, where height is similarly to height of start digit
+                depth_digits = filter(
+                    lambda x: abs(x.full_rect()[1] - start_digit.full_rect()[1])
+                    <= digitsSearchParams.height_error,
+                    digitsSearch.digits,
                 )
-            )
+                depth_digits = sorted(depth_digits, key=lambda x: x.full_rect()[0])
+                # for test
+                for digit in depth_digits:
+                    digit.draw_bounding_box(draw, redColor, 2)
+                    digit.put_text(draw, redColor, scale=0.5, paddings=[0, 5])
 
-            all_figures = [
-                ("Icefish", icefishes), 
-                ("Phytoplankton", phytoplankton), 
-                ("Shellfish and sea urchins", shellfish_and_sea_urchins), 
-                ("Plants", plants)
-            ]
-            all_figures.sort(key=lambda x: len(x[1]), reverse=True)
-            all_figures.append(("Trash", trash))
-            draw_centers = [i.to_value().center for i in all_figures[0][1]]
+                dig_roi = digitsSearchParams.roi_rect
+                cv2.rectangle(
+                    draw,
+                    (dig_roi[0], dig_roi[1]),
+                    (dig_roi[2], dig_roi[3]),
+                    (0, 50, 255),
+                    2,
+                )
 
-            for name, group in all_figures[1:]:
-                for i in group:
-                    v = i.to_value()
-                    if any([math.dist(c, v.center) < 20 for c in draw_centers]):
-                        continue
+            frame_result = find_frame(image, FrameSearchParams())
+            if frame_result.is_found:
+                x, y, w, h = frame_result.box
+                # print(x, y, w, h)
+                cv2.rectangle(draw, (x, y), (x + w, y + h), (255, 255, 255), 2)
 
-                    v.draw_bounding_box(
-                        draw, redColor, 5, paddings=[-15, -15, -15, -15]
+                image = focus(image, (x, y, w, h))
+
+                results = find_figures(image, searchParams)
+                figures = results.figures
+                binaries = results.binaries
+
+                for b in binaries:
+                    cv2.imshow(b.color_range.name, b.img)
+
+                icefishes = figures.where(Figure.shape == ShapeType.FISH)
+                for i in icefishes:
+                    i.to_value().put_text(draw, "Fish", black)
+                phytoplankton = figures.where(Figure.color_name == "green")
+                for i in phytoplankton:
+                    i.to_value().put_text(draw, "Plankton", black)
+
+                circles = figures.where(Figure.shape == ShapeType.CIRCLE)
+                shellfish_and_sea_urchins = circles.where(
+                    Figure.color_name == "red"
+                ) + circles.where(Figure.color_name == "yellow")
+
+                for i in shellfish_and_sea_urchins:
+                    i.to_value().put_text(draw, "SS", black)
+
+                plants = figures.where(Figure.shape == ShapeType.TREE)
+                for i in plants:
+                    i.to_value().put_text(draw, "Plant", black)
+
+                rectangles = figures.where(
+                    Figure.shape == ShapeType.SQUARE
+                ) + figures.where(Figure.shape == ShapeType.RECTANGLE)
+                trash = (
+                    rectangles.where(Figure.color_name == "blue")
+                    + rectangles.where(Figure.color_name == "red")
+                    + rectangles.where(Figure.color_name == "yellow")
+                    + figures.where(
+                        Figure.shape == ShapeType.CIRCLE, Figure.color_name == "blue"
                     )
-                    v.put_text(
-                        draw,
-                        "alien",
-                        redColor,
-                        anchor=AnchorType.TOP,
-                        paddings=[-20, -20],
-                    )
-                    draw_centers.append(v.center)
+                )
 
-            cv2.putText(draw, "Type: " + all_figures[0][0], (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
-            cv2.putText(draw, "Depth: " + "-1", (10, 80), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+                all_figures = [
+                    ("Icefish", icefishes),
+                    ("Phytoplankton", phytoplankton),
+                    ("Shellfish and sea urchins", shellfish_and_sea_urchins),
+                    ("Plants", plants),
+                ]
+                all_figures.sort(key=lambda x: len(x[1]), reverse=True)
+                all_figures.append(("Trash", trash))
+                draw_centers = [i.to_value().center for i in all_figures[0][1]]
 
-            print(
-                "Icefish:",
-                len(icefishes),
-                "plankton:",
-                len(phytoplankton),
-                "SS:",
-                len(shellfish_and_sea_urchins),
-                "plants:",
-                len(plants),
-                "trash:",
-                len(trash),
-            )
+                for name, group in all_figures[1:]:
+                    for i in group:
+                        v = i.to_value()
+                        if any([math.dist(c, v.center) < 20 for c in draw_centers]):
+                            continue
 
+                        v.draw_bounding_box(
+                            draw, redColor, 5, paddings=[-15, -15, -15, -15]
+                        )
+                        v.put_text(
+                            draw,
+                            "alien",
+                            redColor,
+                            anchor=AnchorType.TOP,
+                            paddings=[-20, -20],
+                        )
+                        draw_centers.append(v.center)
+
+                cv2.putText(
+                    draw,
+                    "Type: " + all_figures[0][0],
+                    (10, 50),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    1,
+                    (255, 0, 0),
+                    2,
+                )
+                cv2.putText(
+                    draw,
+                    "Depth: " + "-1",
+                    (10, 80),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    1,
+                    (255, 0, 0),
+                    2,
+                )
+
+                print(
+                    "Icefish:",
+                    len(icefishes),
+                    "plankton:",
+                    len(phytoplankton),
+                    "SS:",
+                    len(shellfish_and_sea_urchins),
+                    "plants:",
+                    len(plants),
+                    "trash:",
+                    len(trash),
+                )
+
+            # cv2.imshow("Thresh", thresh)
+
+            trackbars.process(image)
             auv.show(draw)
-            cv2.waitKey(0)
+
+            if cv2.waitKey(2) == 49:
+                cv2.imshow("Screenshot", draw)
