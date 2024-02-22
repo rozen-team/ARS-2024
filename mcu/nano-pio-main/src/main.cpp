@@ -1,6 +1,5 @@
 #include <Wire.h>
 #include <OLED_I2C.h>
-#include <U8glib.h>
 #include <MS5837.h>
 #include <Adafruit_NeoPixel.h>
 
@@ -9,12 +8,11 @@
 #define pixels_brightness 10
 #define oled_brightness 10
 #define depth_step 0.25
-#define ms_offset 0.48
 
+double ms_offset;
 
 MS5837 sens;
 OLED oled(SDA, SCL);
-U8GLIB_SSD1306_128X64 u8g(U8G_I2C_OPT_NO_ACK);
 Adafruit_NeoPixel pixels = Adafruit_NeoPixel(pixels_cnt, pixels_pin, NEO_GRB + NEO_KHZ800);
 
 extern uint8_t BigNumbers[];
@@ -29,16 +27,20 @@ const uint32_t pixels_color[4] = {
 double depth, tempr;
 bool in_danger;
 uint8_t depth_stage;
-
+auto danger_tmr = millis();
 
 void read_sens() {
 	sens.read();
 	
-	depth = sens.depth() - ms_offset;
+	depth = max(sens.depth() - ms_offset, 0);
   	tempr = sens.temperature();
 
     depth_stage = int(max((float)depth, 0.0f) / depth_step);
-    depth_stage > 6 || depth > 1.5 ? in_danger = true : in_danger = false;
+
+    if(depth_stage > 6 || depth > 1.5f) {
+        in_danger = true; 
+        if(danger_tmr + 4000 < millis()) danger_tmr = millis();
+    } else if(danger_tmr + 4000 < millis()) in_danger = false;
 }
 void for_dataset() {
     depth = (float)random(1000, 9999)/100;
@@ -68,16 +70,6 @@ void display_danger() {
     oled.print("DANGER", 50, 20);
     oled.update();
 }
-void display_danger_u8g() {
-    u8g.firstPage();
-
-    u8g.setFont(u8g_font_unifont);
-    u8g.drawStr(0, 22, "DANGER");
-  
-    delay(4000); in_danger = false;
-
-    u8g.nextPage();
-}
 
 void led_indicate(uint8_t ind) {
     for(int i=0; i<min(ind, pixels_cnt); ++i) 
@@ -87,19 +79,19 @@ void led_indicate(uint8_t ind) {
 
 }
 void led_in_danger() {
-    led_indicate(6);
-    delay(200);
+    if(depth > 1.0f) {
+        led_indicate(6);
+        delay(200);
 
-    for(int i=0; i<6; ++i) 
-        pixels.setPixelColor(pixels_cnt-i-1, pixels_color[3]);
+        for(int i=0; i<6; ++i) 
+            pixels.setPixelColor(pixels_cnt-i-1, pixels_color[3]);
 
-    pixels.show();  
-    delay(200);
+        pixels.show();  
+        delay(200);
+    } else 
+        led_indicate(depth);
 }
 
-void ddanger() {
-
-}
 
 void clear() {
     oled.clrScr();
@@ -117,18 +109,8 @@ void setup() {
     sens.setModel(MS5837::MS5837_30BA);
     sens.setFluidDensity(997);	
 
-    // if ( u8g.getMode() == U8G_MODE_R3G3B2 ) {
-    //     u8g.setColorIndex(255);     // white
-    // }
-    // else if ( u8g.getMode() == U8G_MODE_GRAY2BIT ) {
-    //     u8g.setColorIndex(3);         // max intensity
-    // }
-    // else if ( u8g.getMode() == U8G_MODE_BW ) {
-    //     u8g.setColorIndex(1);         // pixel on
-    // }
-    // else if ( u8g.getMode() == U8G_MODE_HICOLOR ) {
-    //     u8g.setHiColorByRGB(255,255,255);
-    // }
+    read_sens();
+    ms_offset = depth;
 
     oled.setBrightness(oled_brightness);
     pixels.setBrightness(pixels_brightness);
@@ -136,17 +118,16 @@ void setup() {
 void loop() {
     read_sens();   
 
-    if(in_danger) {
-        clear();                
-
-        display_danger();
-        auto tmr = millis();
-        while(tmr+4000 > millis()) { led_in_danger(); }
-
-
-    } else {
-        led_indicate(depth_stage);
-        display_values(depth, tempr);
+    switch (in_danger) {
+        case true:
+            display_danger();
+            led_in_danger();
+            break;
+        
+        case false:
+            led_indicate(depth_stage);
+            display_values(depth, tempr);
+            break;
     }
 
     delay(50);
