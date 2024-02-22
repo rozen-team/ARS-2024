@@ -24,24 +24,33 @@ const uint32_t pixels_color[4] = {
     pixels.Color(100, 0, 0),   // 2 -> Red
     pixels.Color(0, 0, 0)      // 3 -> Off
 };
-double depth, tempr;
-bool in_danger, exit_danger_fl = true;
+double depth, prev_depth, tempr;
 uint8_t depth_stage;
 uint64_t danger_tmr; 
+bool in_danger, in_normal, danger_blink, going_up;
+
 
 void read_sens() {
 	sens.read();
-	
-	depth = max(sens.depth()-ms_offset, 0);
+	prev_depth = depth;
+
+	depth = max(0, sens.depth()-ms_offset);
   	tempr = sens.temperature();
 
     depth_stage = int(max((float)depth, 0.0f) / depth_step);
 
     if(depth > 1.5) {
-        if(!in_danger) danger_tmr = millis();
+        if(in_normal) danger_tmr = millis(), in_normal = false, danger_blink = true;
 
-        in_danger = true;
-    } else if(danger_tmr + 4000 < millis()) in_danger = false;
+        if(!going_up) { if(depth < prev_depth) going_up = true; }
+        else            if(depth > prev_depth) going_up = false;
+
+        in_danger = going_up ? false : true; // change <going_up> to false/0 if u do not need new logic
+    } else if(danger_tmr + 4000 < millis()) 
+        depth <= 1.5 ? depth <= 1.0 ? danger_blink = false,
+                       in_danger = false, going_up = false, in_normal = true :
+                       in_danger = false, going_up = false, in_normal = true :
+                       in_danger = true,                    in_normal = false; 
 }
 void for_dataset() {
     depth = (float)random(1000, 9999)/100;
@@ -72,27 +81,12 @@ void display_danger() {
     oled.update();
 }
 
-void led_indicate(uint8_t ind) {
+void led(uint8_t ind, uint32_t _pixels_color = pixels_color[(int)(depth_stage-1) / 2]) {
     for(int i=0; i<min(ind, pixels_cnt); ++i) 
-        pixels.setPixelColor(pixels_cnt-i-1, pixels_color[(int)(ind-1)/2]);
+        pixels.setPixelColor(pixels_cnt-i-1, _pixels_color);
 
     pixels.show();
-
 }
-void led_in_danger() {
-    if(depth > 1.0f) {
-        led_indicate(6);
-        delay(200);
-
-        for(int i=0; i<6; ++i) 
-            pixels.setPixelColor(pixels_cnt-i-1, pixels_color[3]);
-
-        pixels.show();  
-        delay(200);
-    } else 
-        led_indicate(depth);
-}
-
 
 void clear() {
     oled.clrScr();
@@ -119,17 +113,8 @@ void setup() {
 void loop() {
     read_sens();   
 
-    switch (in_danger) {
-        case true:
-            display_danger();
-            led_in_danger();
-            break;
-        
-        case false:
-            led_indicate(depth_stage);
-            display_values(depth, tempr);
-            break;
-    }
+    in_danger ? display_danger() : display_values(depth, tempr);
+    danger_blink ? led(pixels_cnt, pixels_color[int(danger_tmr / 200) % 2 ? 2 : 3]) : led(depth_stage);
 
     delay(50);
     clear();
