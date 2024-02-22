@@ -1697,7 +1697,7 @@ if __name__ == "__main__":
         "red": ColorRange(Color(0, 150, 40), Color(15, 255, 255), "red")  # good
         + ColorRange(Color(170, 150, 30), Color(180, 255, 255), "red"),
         "yellow": ColorRange(Color(37, 234, 50), Color(56, 255, 255), "yellow"),  # bad
-        "green": ColorRange(Color(57, 204, 43), Color(63, 255, 255), "green"),  # ok
+        "green": ColorRange(Color(57, 120, 70), Color(67, 255, 169), "green"),  # ok
     }
 
     ranges = RANGES_ROBOT
@@ -1744,7 +1744,7 @@ if __name__ == "__main__":
     #    "day-1/data/tr5.jpg",
     # ]
 
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture("digits_bad.mp4")
     # cap = cv2.VideoCapture('digits.mp4')
     #writer = cv2.VideoWriter('outpy.avi',cv2.VideoWriter_fourcc('M','J','P','G'), 10, (320,480))
 
@@ -1753,8 +1753,8 @@ if __name__ == "__main__":
     sequence = ["day-1/data/tr7.png"]
 
     auv = SmartAUV(
-        # get_front_frame_func=lambda self: cap.read()[1],
-        get_front_frame_func=lambda self: batch_test(sequence),
+        get_front_frame_func=lambda self: cap.read()[1],
+        #get_front_frame_func=lambda self: batch_test(sequence),
         get_bottom_frame_func=lambda self: None,
         prepare=False,
     )
@@ -1856,6 +1856,9 @@ if __name__ == "__main__":
                     + figures.where(
                         Figure.shape == ShapeType.CIRCLE, Figure.color_name == "blue"
                     )
+                    + figures.where(
+                        Figure.shape == ShapeType.TRIANGLE, Figure.color_name == "red"
+                    )
                 )
 
                 all_figures = [
@@ -1929,7 +1932,7 @@ if __name__ == "__main__":
             #     print(k)
             if k == 49:
                 cv2.imshow("Screenshot", draw)
-            elif key == ord('q'):
+            elif k == ord('q'):
                 #writer.release()
                 cap.release()
                 exit(0)
