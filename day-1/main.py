@@ -407,7 +407,7 @@ class Figure:
                 self.triangle_area = s_triangle
                 self.triangle_box = triangle
         elif len(self.hull_defects) == 2:
-            s, e, f, d = self.hull_defects[0]
+            s, e, f, d = max(self.hull_defects, key=lambda x: x[3])
             start = tuple(cnt[s][0])
             end = tuple(cnt[e][0])
             far = tuple(cnt[f][0])
@@ -416,7 +416,7 @@ class Figure:
             vec_fe = (far[0] - end[0], far[1] - end[1])
 
             angle = math.degrees(math.acos(Maath.cos_between_vectors(vec_fs, vec_fe)))
-            if self.allowed(ShapeType.TREE) and angle < 100:
+            if self.allowed(ShapeType.TREE) and angle < 90:
                 self.shape = ShapeType.TREE
             elif self.allowed(ShapeType.FISH):
                 self.shape = ShapeType.FISH
@@ -1651,11 +1651,11 @@ if __name__ == "__main__":
     }
 
     RANGES_ROBOT = {
-        "blue": ColorRange(Color(90, 100, 0), Color(150, 255, 200), "blue"),  # ok
-        "red": ColorRange(Color(0, 150, 30), Color(15, 255, 255), "red")  # good
+        "blue": ColorRange(Color(90, 100, 10), Color(150, 255, 200), "blue"),  # ok
+        "red": ColorRange(Color(0, 150, 40), Color(15, 255, 255), "red")  # good
         + ColorRange(Color(170, 150, 30), Color(180, 255, 255), "red"),
-        "yellow": ColorRange(Color(24, 242, 0), Color(39, 255, 133), "yellow"),  # idk
-        "green": ColorRange(Color(56, 169, 34), Color(63, 255, 255), "green"),  # bad
+        "yellow": ColorRange(Color(37, 234, 50), Color(56, 255, 255), "yellow"),  # bad
+        "green": ColorRange(Color(57, 204, 43), Color(63, 255, 255), "green"),  # ok
     }
 
     ranges = RANGES_ROBOT
@@ -1676,7 +1676,7 @@ if __name__ == "__main__":
         ],
         min_contour_area=70,
         allowed_shapes=ALL_SHAPES,
-        convexity_defects_min_distance=1000,
+        convexity_defects_min_distance=800,
     )
 
     digitsSearchParams = DigitsSearchParams(
@@ -1685,6 +1685,8 @@ if __name__ == "__main__":
         kernel_size=3,
         roi_rect=[107, 20, 250, 170],
     )
+
+    frameSearchParams = FrameSearchParams(threshold=20, underline_width_coefficient=1)
 
     # sequence = [
     #     "day-1/data/t1.png",
@@ -1699,15 +1701,16 @@ if __name__ == "__main__":
     #    "day-1/data/tr4.jpg",
     #    "day-1/data/tr5.jpg",
     # ]
-    # cap = cv2.VideoCapture(0)
-    cap = cv2.VideoCapture("day-1/data/vid2.mp4")
+    cap = cv2.VideoCapture("day-1/data/vid3-c4.mp4")
+    # cap = cv2.VideoCapture("day-1/data/vid2.mp4")
 
     # test digits
-    sequence = ["day-1/data/digits.png", "day-1/data/digits_1.png"]
+    # sequence = ["day-1/data/digits.png", "day-1/data/digits_1.png"]
+    sequence = ["day-1/data/tr7.png"]
 
     auv = SmartAUV(
-        get_front_frame_func=lambda self: cap.read()[1],
-        # get_front_frame_func=lambda self: batch_test(sequence),
+        # get_front_frame_func=lambda self: cap.read()[1],
+        get_front_frame_func=lambda self: batch_test(sequence),
         get_bottom_frame_func=lambda self: None,
         prepare=False,
     )
@@ -1718,6 +1721,7 @@ if __name__ == "__main__":
     while True:
         with auv as (image, _):
             draw = image.copy()
+            cv2.imshow("img", image)
 
             digitsSearch = find_digits(image, digitsSearchParams)
             if len(digitsSearch.digits) > 0:
@@ -1744,7 +1748,7 @@ if __name__ == "__main__":
                     2,
                 )
 
-            frame_result = find_frame(image, FrameSearchParams())
+            frame_result = find_frame(image, frameSearchParams)
             if frame_result.is_found:
                 x, y, w, h = frame_result.box
                 # print(x, y, w, h)
@@ -1753,7 +1757,7 @@ if __name__ == "__main__":
                 image = focus(image, (x, y, w, h))
 
                 results = find_figures(image, searchParams)
-                figures = results.figures
+                figures = results.figures.where(Figure.center_y > y + h * 0.1)
                 binaries = results.binaries
 
                 for b in binaries:
@@ -1855,5 +1859,8 @@ if __name__ == "__main__":
             trackbars.process(image)
             auv.show(draw)
 
-            if cv2.waitKey(2) == 49:
+            k = cv2.waitKey(100)
+            # if k != -1:
+            #     print(k)
+            if k == 49:
                 cv2.imshow("Screenshot", draw)
