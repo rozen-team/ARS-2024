@@ -22,24 +22,25 @@ const uint32_t pixels_color[4] = {
     pixels.Color(0, 100, 0),   // 0 -> Green
     pixels.Color(100, 100, 0), // 1 -> Yellow
     pixels.Color(100, 0, 0),   // 2 -> Red
-    pixels.Color(0, 0, 0)
+    pixels.Color(0, 0, 0)      // 3 -> Off
 };
 double depth, tempr;
-bool in_danger;
+bool in_danger, exit_danger_fl = true;
 uint8_t depth_stage;
-auto danger_tmr = millis();
+uint64_t danger_tmr; 
 
 void read_sens() {
 	sens.read();
 	
-	depth = max(sens.depth() - ms_offset, 0);
+	depth = max(sens.depth()-ms_offset, 0);
   	tempr = sens.temperature();
 
     depth_stage = int(max((float)depth, 0.0f) / depth_step);
 
-    if(depth_stage > 6 || depth > 1.5f) {
-        in_danger = true; 
-        if(danger_tmr + 4000 < millis()) danger_tmr = millis();
+    if(depth > 1.5) {
+        if(!in_danger) danger_tmr = millis();
+
+        in_danger = true;
     } else if(danger_tmr + 4000 < millis()) in_danger = false;
 }
 void for_dataset() {
