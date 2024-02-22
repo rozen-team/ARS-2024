@@ -4,6 +4,7 @@ import time as t
 from enum import Enum
 from typing import Any, List, Set, Tuple, Union
 from copy import deepcopy
+import time
 
 USING_IMUTILS = True
 try:
@@ -288,6 +289,10 @@ class Figure:
     is_convex = Property("is_convex")
     hull = Property("hull")
     hull_defects = Property("hull_defects")
+    x = Property("x")
+    y = Property("y")
+    w = Property("w")
+    h = Property("h")
 
     _allowed_shapes = []
 
@@ -353,6 +358,12 @@ class Figure:
         if cnt is not ...:
             self.cnt = cnt
 
+        box = cv2.boundingRect(self.cnt)
+        self.x = box[0]
+        self.y = box[1]
+        self.w = box[2]
+        self.h = box[3]
+
         (cX, xY), cR = cv2.minEnclosingCircle(self.cnt)
         s_triangle, triangle = cv2.minEnclosingTriangle(self.cnt)
         rect = cv2.minAreaRect(self.cnt)
@@ -417,7 +428,7 @@ class Figure:
             vec_fe = (far[0] - end[0], far[1] - end[1])
 
             angle = math.degrees(math.acos(Maath.cos_between_vectors(vec_fs, vec_fe)))
-            if self.allowed(ShapeType.TREE) and angle < 90:
+            if self.allowed(ShapeType.TREE) and angle < 110:
                 self.shape = ShapeType.TREE
             elif self.allowed(ShapeType.FISH):
                 self.shape = ShapeType.FISH
@@ -1108,7 +1119,9 @@ def find_figures(rgb: np.ndarray, params: FiguresSearchParams) -> FiguresSearchR
     return FiguresSearchResult(figures, bimages)
 
 
-def classify_digit(bin: np.ndarray, rect: List[int], params: DigitsSearchParams) -> Digit:
+def classify_digit(
+    bin: np.ndarray, rect: List[int], params: DigitsSearchParams
+) -> Digit:
     DIGITS_LOOKUP = {
         (1, 1, 1, 0, 1, 1, 1): 0,
         (0, 0, 1, 0, 0, 1, 0): 1,
@@ -1119,20 +1132,16 @@ def classify_digit(bin: np.ndarray, rect: List[int], params: DigitsSearchParams)
         (1, 1, 0, 1, 1, 1, 1): 6,
         (1, 0, 1, 0, 0, 1, 0): 7,
         (1, 1, 1, 1, 1, 1, 1): 8,
-        (1, 1, 1, 1, 0, 1, 1): 9
+        (1, 1, 1, 1, 0, 1, 1): 9,
     }
 
-    roi = bin[rect[1]:rect[3], rect[0]:rect[2]].copy()
+    roi = bin[rect[1] : rect[3], rect[0] : rect[2]].copy()
     (h, w) = roi.shape
 
     # detect the digit --> 1
     # move out this value to params
     if (h / w) > params.one_ratio:
-        return Digit(
-            value = 1,
-            global_rect = params.roi_rect,
-            local_rect = rect
-        )
+        return Digit(value=1, global_rect=params.roi_rect, local_rect=rect)
 
     roi = cv2.resize(roi, (params.digit_width, int(params.digit_width / 0.6)))
     (h, w) = roi.shape
@@ -1142,33 +1151,32 @@ def classify_digit(bin: np.ndarray, rect: List[int], params: DigitsSearchParams)
     dBrd = int(w * 0.1)
     segments = [
         ((dBrd, dBrd), (w - dBrd, dH + dBrd)),  # top
-        ((dBrd, dBrd), (dW + dBrd, h // 2)), # top-left
-        ((w - dW - dBrd, dBrd), (w - dBrd, h // 2)), # top-right
-        ((dBrd, (h // 2) - dHC) , (w - dBrd, (h // 2) + dHC)), # center
-        ((dBrd, h // 2), (dW + dBrd, h - dBrd)), # bottom-left
-        ((w - dW - dBrd, h // 2), (w - dBrd, h - dBrd)), # bottom-right
-        ((dBrd, h - dH - dBrd), (w - dBrd, h - dBrd))   # bottom
+        ((dBrd, dBrd), (dW + dBrd, h // 2)),  # top-left
+        ((w - dW - dBrd, dBrd), (w - dBrd, h // 2)),  # top-right
+        ((dBrd, (h // 2) - dHC), (w - dBrd, (h // 2) + dHC)),  # center
+        ((dBrd, h // 2), (dW + dBrd, h - dBrd)),  # bottom-left
+        ((w - dW - dBrd, h // 2), (w - dBrd, h - dBrd)),  # bottom-right
+        ((dBrd, h - dH - dBrd), (w - dBrd, h - dBrd)),  # bottom
     ]
     on = [0] * len(segments)
 
-    for (i, ((xA, yA), (xB, yB))) in enumerate(segments):
+    for i, ((xA, yA), (xB, yB)) in enumerate(segments):
         segROI = roi[yA:yB, xA:xB]
         total = cv2.countNonZero(segROI)
         cv2.rectangle(roi, (xA, yA), (xB, yB), 127, 1)
         area = (xB - xA) * (yB - yA)
         if total / (float(area) + pow(10, -10)) > params.segwhite_ratio:
-            on[i]= 1
+            on[i] = 1
 
-    #cv2.imshow('roi', roi)
-    #cv2.waitKey(0)
+    # cv2.imshow('roi', roi)
+    # cv2.waitKey(0)
 
     if tuple(on) not in DIGITS_LOOKUP:
         return None
     return Digit(
-            value = DIGITS_LOOKUP[tuple(on)],
-            global_rect = params.roi_rect,
-            local_rect = rect
-        )
+        value=DIGITS_LOOKUP[tuple(on)], global_rect=params.roi_rect, local_rect=rect
+    )
+
 
 def find_digits(rgb: np.ndarray, params: DigitsSearchParams) -> DigitsSearchResult:
     hsv = cv2.cvtColor(rgb, cv2.COLOR_BGR2HSV)
@@ -1177,7 +1185,7 @@ def find_digits(rgb: np.ndarray, params: DigitsSearchParams) -> DigitsSearchResu
     if params.roi_rect is not None:
         # crop roi
         roi_rect = params.roi_rect
-        roi = hsv[roi_rect[1]:roi_rect[3], roi_rect[0]:roi_rect[2]]
+        roi = hsv[roi_rect[1] : roi_rect[3], roi_rect[0] : roi_rect[2]]
 
     rng = params.color_range
     min_color = rng.min_color.to_tuple()
@@ -1186,16 +1194,14 @@ def find_digits(rgb: np.ndarray, params: DigitsSearchParams) -> DigitsSearchResu
 
     # a bit of filters...
     ksize = params.kernel_size
-    kernel = np.ones((ksize, ksize), np.uint8) 
+    kernel = np.ones((ksize, ksize), np.uint8)
     bin = cv2.erode(bin, kernel)
 
-    cv2.imshow('bin', bin)
-    #cv2.waitKey(0)
+    cv2.imshow("bin", bin)
+    # cv2.waitKey(0)
 
     # hardcode the parameters of findContoures. We always search external cnt
-    contours, _ = cv2.findContours(
-        bin, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE
-    )
+    contours, _ = cv2.findContours(bin, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
 
     digits = []
     for cnt in contours:
@@ -1213,12 +1219,7 @@ def find_digits(rgb: np.ndarray, params: DigitsSearchParams) -> DigitsSearchResu
         if digits_count > 0:
             step = w / digits_count
             for i in range(digits_count):
-                digit_rect = [
-                    x + i * step, 
-                    y, 
-                    x + min((i + 1) * step, w), 
-                    y + h
-                ]
+                digit_rect = [x + i * step, y, x + min((i + 1) * step, w), y + h]
                 digit_rect = list(map(int, digit_rect))
                 digit_value = classify_digit(bin, digit_rect, params)
 
@@ -1227,12 +1228,7 @@ def find_digits(rgb: np.ndarray, params: DigitsSearchParams) -> DigitsSearchResu
 
         if digits_count == 0:
             # check full roi (when one digit in it)
-            digit_rect = [
-                x, 
-                y, 
-                x + w, 
-                y + h
-            ]
+            digit_rect = [x, y, x + w, y + h]
             digit_value = classify_digit(bin, digit_rect, params)
             if digit_value is not None:
                 digits.append(digit_value)
@@ -1667,9 +1663,12 @@ def batch_test(sequence):
 
     return image
 
+
 NUM_READ = 20
 idx = 0
 mArray = [0] * NUM_READ
+
+
 def middleFilter(x: float) -> float:
     # ha ha, no, its exp filter
     global idx, mArray
@@ -1683,6 +1682,7 @@ def middleFilter(x: float) -> float:
 
     return average / float(NUM_READ)
 
+
 if __name__ == "__main__":
     RANGES_TEST = {
         "blue": ColorRange(Color(90, 100, 0), Color(150, 255, 200), "blue"),
@@ -1692,7 +1692,7 @@ if __name__ == "__main__":
         "green": ColorRange(Color(45, 0, 0), Color(80, 255, 255), "green"),
     }
 
-    RANGES_ROBOT = {
+    RANGES_ROBOT_FAR = {
         "blue": ColorRange(Color(90, 100, 10), Color(150, 255, 200), "blue"),  # ok
         "red": ColorRange(Color(0, 150, 40), Color(15, 255, 255), "red")  # good
         + ColorRange(Color(170, 150, 30), Color(180, 255, 255), "red"),
@@ -1700,7 +1700,15 @@ if __name__ == "__main__":
         "green": ColorRange(Color(57, 120, 70), Color(67, 255, 169), "green"),  # ok
     }
 
-    ranges = RANGES_ROBOT
+    RANGES_ROBOT_FAR_TEST = {
+        "blue": ColorRange(Color(106, 100, 55), Color(116, 255, 200), "blue"),  # ok
+        "red": ColorRange(Color(0, 150, 40), Color(15, 255, 255), "red")  # good
+        + ColorRange(Color(170, 150, 30), Color(180, 255, 255), "red"),
+        "yellow": ColorRange(Color(37, 234, 50), Color(56, 255, 255), "yellow"),  # bad
+        "green": ColorRange(Color(55, 230, 30), Color(67, 255, 230), "green"),  # ok
+    }
+
+    ranges = RANGES_ROBOT_FAR_TEST
 
     whiteColor = Color(255, 255, 255, "white")
     greenColor = Color(0, 255, 0, "green")
@@ -1718,7 +1726,7 @@ if __name__ == "__main__":
         ],
         min_contour_area=70,
         allowed_shapes=ALL_SHAPES,
-        convexity_defects_min_distance=800,
+        convexity_defects_min_distance=1000,
     )
 
     digitsSearchParams = DigitsSearchParams(
@@ -1744,9 +1752,9 @@ if __name__ == "__main__":
     #    "day-1/data/tr5.jpg",
     # ]
 
-    cap = cv2.VideoCapture("digits_bad.mp4")
+    cap = cv2.VideoCapture("day-1/data/vid4-c3.mp4")
     # cap = cv2.VideoCapture('digits.mp4')
-    #writer = cv2.VideoWriter('outpy.avi',cv2.VideoWriter_fourcc('M','J','P','G'), 10, (320,480))
+    # writer = cv2.VideoWriter('outpy.avi',cv2.VideoWriter_fourcc('M','J','P','G'), 10, (320,480))
 
     # test digits
     # sequence = ["day-1/data/digits.png", "day-1/data/digits_1.png"]
@@ -1754,7 +1762,7 @@ if __name__ == "__main__":
 
     auv = SmartAUV(
         get_front_frame_func=lambda self: cap.read()[1],
-        #get_front_frame_func=lambda self: batch_test(sequence),
+        # get_front_frame_func=lambda self: batch_test(sequence),
         get_bottom_frame_func=lambda self: None,
         prepare=False,
     )
@@ -1765,10 +1773,12 @@ if __name__ == "__main__":
     prev_depth_t = 0
     current_depth = 0
 
+    start_timestamp = time.time()
+
     while True:
         with auv as (image, _):
-            #print(image.shape)
-            #writer.write(image)
+            # print(image.shape)
+            # writer.write(image)
             draw = image.copy()
             cv2.imshow("img", image)
 
@@ -1776,7 +1786,9 @@ if __name__ == "__main__":
                 digitsSearch = find_digits(image, digitsSearchParams)
                 if len(digitsSearch.digits) > 0:
                     # find first digit of depth
-                    start_digit = min(digitsSearch.digits, key=lambda x: x.full_rect()[1])
+                    start_digit = min(
+                        digitsSearch.digits, key=lambda x: x.full_rect()[1]
+                    )
                     # find another digit, where height is similarly to height of start digit
                     depth_digits = filter(
                         lambda x: abs(x.full_rect()[1] - start_digit.full_rect()[1])
@@ -1786,7 +1798,9 @@ if __name__ == "__main__":
 
                     depth_len = deepcopy(depth_digits)
                     if len(list(depth_len)) == 3:
-                        depth_digits = sorted(depth_digits, key=lambda x: x.full_rect()[0])
+                        depth_digits = sorted(
+                            depth_digits, key=lambda x: x.full_rect()[0]
+                        )
                         # for test
 
                         for digit in depth_digits:
@@ -1794,14 +1808,18 @@ if __name__ == "__main__":
                             digit.draw_bounding_box(draw, greenColor, 4)
                             digit.put_text(draw, greenColor, scale=0.5, paddings=[0, 5])
 
-                        depth_value = float(depth_digits[0].value) + float(depth_digits[1].value) * 0.1 + float(depth_digits[2].value) * 0.01
+                        depth_value = (
+                            float(depth_digits[0].value)
+                            + float(depth_digits[1].value) * 0.1
+                            + float(depth_digits[2].value) * 0.01
+                        )
                         depth_value = middleFilter(depth_value)
                         if depth_value <= 1.5:
                             current_depth = depth_value
-                            #print(f"new depth: {depth_value}")
+                            # print(f"new depth: {depth_value}")
                 prev_depth_t = t.time()
 
-            #print(f"Current depth --> {round(current_depth, 2)}")
+            # print(f"Current depth --> {round(current_depth, 2)}")
 
             dig_roi = digitsSearchParams.roi_rect
             cv2.rectangle(
@@ -1821,7 +1839,7 @@ if __name__ == "__main__":
                 image = focus(image, (x, y, w, h))
 
                 results = find_figures(image, searchParams)
-                figures = results.figures.where(Figure.center_y > y + h * 0.1)
+                figures = results.figures.where(Figure.y > y + h * 0.2)
                 binaries = results.binaries
 
                 for b in binaries:
@@ -1844,11 +1862,13 @@ if __name__ == "__main__":
 
                 plants = figures.where(Figure.shape == ShapeType.TREE)
                 for i in plants:
+                    # print(i.to_value().hull_defects[0])
                     i.to_value().put_text(draw, "Plant", black)
 
                 rectangles = figures.where(
                     Figure.shape == ShapeType.SQUARE
                 ) + figures.where(Figure.shape == ShapeType.RECTANGLE)
+                triangles = figures.where(Figure.shape == ShapeType.TRIANGLE)
                 trash = (
                     rectangles.where(Figure.color_name == "blue")
                     + rectangles.where(Figure.color_name == "red")
@@ -1856,9 +1876,9 @@ if __name__ == "__main__":
                     + figures.where(
                         Figure.shape == ShapeType.CIRCLE, Figure.color_name == "blue"
                     )
-                    + figures.where(
-                        Figure.shape == ShapeType.TRIANGLE, Figure.color_name == "red"
-                    )
+                    + triangles.where(Figure.color_name == "red")
+                    + triangles.where(Figure.color_name == "yellow")
+                    + triangles.where(Figure.color_name == "blue")
                 )
 
                 all_figures = [
@@ -1924,16 +1944,25 @@ if __name__ == "__main__":
 
             # cv2.imshow("Thresh", thresh)
 
+            cv2.putText(
+                draw,
+                "Time: " + str(round(time.time() - start_timestamp, 1)),
+                (10, 110),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1,
+                (255, 0, 0),
+                2,
+            )
+
             trackbars.process(image)
             auv.show(draw)
 
-            k = cv2.waitKey(10)
+            k = cv2.waitKey(100)
             # if k != -1:
             #     print(k)
             if k == 49:
                 cv2.imshow("Screenshot", draw)
-            elif k == ord('q'):
-                #writer.release()
+            elif k == ord("q"):
+                # writer.release()
                 cap.release()
                 exit(0)
-
