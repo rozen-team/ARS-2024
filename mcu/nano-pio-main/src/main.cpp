@@ -27,7 +27,7 @@ const uint32_t pixels_color[4] = {
 double depth, prev_depth, tempr;
 uint8_t depth_stage;
 uint64_t danger_tmr; 
-bool in_danger, in_normal, danger_blink, going_up;
+bool in_danger, in_normal = true, danger_blink, going_up;
 
 
 void read_sens() {
@@ -45,12 +45,17 @@ void read_sens() {
         if(!going_up) { if(depth < prev_depth) going_up = true; }
         else            if(depth > prev_depth) going_up = false;
 
-        in_danger = going_up ? false : true; // change <going_up> to false/0 if u do not need new logic
-    } else if(danger_tmr + 4000 < millis()) 
+        in_danger = false ? false : true; // change <going_up> to false/0 if u do not need new logic
+    } else if(!in_normal) {
+        if(danger_tmr + 1600 < millis()) 
         depth <= 1.5 ? depth <= 1.0 ? danger_blink = false,
                        in_danger = false, going_up = false, in_normal = true :
                        in_danger = false, going_up = false, in_normal = true :
                        in_danger = true,                    in_normal = false; 
+    } else in_danger = false, in_normal = true;
+
+    if(depth <  1.5 && danger_tmr + 1600 < millis()) in_normal = true;
+    if(depth <= 1.0) danger_blink = false;
 }
 void for_dataset() {
     depth = (float)random(1000, 9999)/100;
@@ -79,6 +84,7 @@ void display_danger() {
     oled.setFont(SmallFont);
     oled.print("DANGER", 50, 20);
     oled.update();
+    // Serial.println((float)danger_tmr);
 }
 
 void led(uint8_t ind, uint32_t _pixels_color = pixels_color[(int)(depth_stage-1) / 2]) {
@@ -114,7 +120,7 @@ void loop() {
     read_sens();   
 
     in_danger ? display_danger() : display_values(depth, tempr);
-    danger_blink ? led(pixels_cnt, pixels_color[int(danger_tmr / 200) % 2 ? 2 : 3]) : led(depth_stage);
+    danger_blink ? led(pixels_cnt, pixels_color[int((millis() - danger_tmr) / 200) % 2 ? 2 : 3]) : led(depth_stage);
 
     delay(50);
     clear();
