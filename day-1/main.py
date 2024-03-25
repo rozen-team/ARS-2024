@@ -287,7 +287,7 @@ class Figure:
     is_convex = Property("is_convex")
     hull = Property("hull")
     hull_defects = Property("hull_defects")
-
+    
     _allowed_shapes = []
 
     def __init__(
